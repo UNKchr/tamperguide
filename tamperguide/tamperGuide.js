@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         TamperGuide
 // @namespace    https://github.com/UNKchr/tamperguide
-// @version      1.0.1
+// @version      1.1.0
 // @author       UNKchr
 // @description  Lightweight library for product tours, highlights, and contextual help in Tampermonkey userscripts.
 // @license      MIT
 // ==/UserScript==
 
 // ===========================================================================
-// TamperGuide v1.0.0
+// TamperGuide v1.1.0
 // Lightweight library for product tours, highlights, and contextual help
 // in Tampermonkey userscripts. Inspired by driver.js, designed for the
 // userscript ecosystem.
@@ -30,7 +30,7 @@
      * @param {Object} [context={}] - Additional debugging context
      */
     constructor(code, message, context = {}) {
-      const fullMessage = `[TamperGuide:${code}] ${message}`;
+      var fullMessage = '[TamperGuide:' + code + '] ' + message;
       super(fullMessage);
       this.name = 'TamperGuideError';
       this.code = code;
@@ -38,7 +38,7 @@
     }
   }
 
-  const ErrorCodes = Object.freeze({
+  var ErrorCodes = Object.freeze({
     INVALID_CONFIG: 'INVALID_CONFIG',
     INVALID_STEP: 'INVALID_STEP',
     ELEMENT_NOT_FOUND: 'ELEMENT_NOT_FOUND',
@@ -54,7 +54,7 @@
    * @param {string} message - Descriptive message
    */
   function warn(code, message) {
-    console.warn(`[TamperGuide:${code}] ${message}`);
+    console.warn('[TamperGuide:' + code + '] ' + message);
   }
 
   /**
@@ -72,7 +72,7 @@
       );
     }
 
-    const validKeys = [
+    var validKeys = [
       'steps', 'animate', 'overlayColor', 'overlayOpacity', 'stagePadding',
       'stageRadius', 'allowClose', 'allowKeyboardControl', 'showProgress',
       'showButtons', 'progressText', 'nextBtnText', 'prevBtnText',
@@ -84,14 +84,17 @@
       'onCloseClick', 'onPopoverRender',
     ];
 
-    for (const key of Object.keys(config)) {
-      if (!validKeys.includes(key)) {
-        const suggestions = validKeys
-          .filter(k => k.toLowerCase().includes(key.toLowerCase().slice(0, 4)))
+    var configKeys = Object.keys(config);
+    for (var i = 0; i < configKeys.length; i++) {
+      var key = configKeys[i];
+      if (validKeys.indexOf(key) === -1) {
+        var suggestions = validKeys
+          .filter(function (k) { return k.toLowerCase().indexOf(key.toLowerCase().slice(0, 4)) !== -1; })
           .join(', ');
         warn(
           ErrorCodes.INVALID_CONFIG,
-          `Unknown option: "${key}".${suggestions ? ` Did you mean: ${suggestions}?` : ` Valid options: ${validKeys.join(', ')}`}`
+          'Unknown option: "' + key + '".' +
+          (suggestions ? ' Did you mean: ' + suggestions + '?' : ' Valid options: ' + validKeys.join(', '))
         );
       }
     }
@@ -104,7 +107,9 @@
           '. Example: steps: [{ element: "#my-button", popover: { title: "Hello" } }]'
         );
       }
-      config.steps.forEach((step, index) => validateStep(step, index));
+      for (var j = 0; j < config.steps.length; j++) {
+        validateStep(config.steps[j], j);
+      }
     }
 
     if (config.overlayOpacity !== undefined) {
@@ -123,27 +128,27 @@
           '"showButtons" must be an Array. Valid values: ["next", "previous", "close"]. Received: ' + typeof config.showButtons
         );
       }
-      const validButtons = ['next', 'previous', 'close'];
-      for (const btn of config.showButtons) {
-        if (!validButtons.includes(btn)) {
+      var validButtons = ['next', 'previous', 'close'];
+      for (var b = 0; b < config.showButtons.length; b++) {
+        if (validButtons.indexOf(config.showButtons[b]) === -1) {
           throw new TamperGuideError(
             ErrorCodes.INVALID_CONFIG,
-            `Unknown button in "showButtons": "${btn}". Valid values: ${validButtons.join(', ')}`
+            'Unknown button in "showButtons": "' + config.showButtons[b] + '". Valid values: ' + validButtons.join(', ')
           );
         }
       }
     }
 
-    const hookKeys = [
+    var hookKeys = [
       'onHighlightStarted', 'onHighlighted', 'onDeselected',
       'onDestroyStarted', 'onDestroyed', 'onNextClick', 'onPrevClick',
       'onCloseClick', 'onPopoverRender',
     ];
-    for (const hookKey of hookKeys) {
-      if (config[hookKey] !== undefined && typeof config[hookKey] !== 'function') {
+    for (var h = 0; h < hookKeys.length; h++) {
+      if (config[hookKeys[h]] !== undefined && typeof config[hookKeys[h]] !== 'function') {
         throw new TamperGuideError(
           ErrorCodes.INVALID_CONFIG,
-          `"${hookKey}" must be a function. Received: ${typeof config[hookKey]}`
+          '"' + hookKeys[h] + '" must be a function. Received: ' + typeof config[hookKeys[h]]
         );
       }
     }
@@ -159,23 +164,23 @@
     if (step === null || typeof step !== 'object') {
       throw new TamperGuideError(
         ErrorCodes.INVALID_STEP,
-        `Step at index ${index} must be an object. Received: ${typeof step}. ` +
+        'Step at index ' + index + ' must be an object. Received: ' + typeof step + '. ' +
         'Example: { element: "#my-element", popover: { title: "Title", description: "Description" } }'
       );
     }
 
     if (step.element !== undefined) {
-      const elementType = typeof step.element;
+      var elementType = typeof step.element;
       if (elementType !== 'string' && elementType !== 'function' && !(step.element instanceof Element)) {
         throw new TamperGuideError(
           ErrorCodes.INVALID_STEP,
-          `"element" in step ${index} must be a CSS selector (string), a function returning an Element, or a DOM Element. Received: ${elementType}`
+          '"element" in step ' + index + ' must be a CSS selector (string), a function returning an Element, or a DOM Element. Received: ' + elementType
         );
       }
       if (elementType === 'string' && step.element.trim() === '') {
         throw new TamperGuideError(
           ErrorCodes.INVALID_STEP,
-          `"element" in step ${index} is an empty string. Provide a valid CSS selector, e.g. "#my-element" or ".my-class"`
+          '"element" in step ' + index + ' is an empty string. Provide a valid CSS selector, e.g. "#my-element" or ".my-class"'
         );
       }
     }
@@ -184,23 +189,23 @@
       if (typeof step.popover !== 'object' || step.popover === null) {
         throw new TamperGuideError(
           ErrorCodes.INVALID_STEP,
-          `"popover" in step ${index} must be an object. Example: { title: "Title", description: "Description" }`
+          '"popover" in step ' + index + ' must be an object. Example: { title: "Title", description: "Description" }'
         );
       }
 
-      const validSides = ['top', 'right', 'bottom', 'left'];
-      if (step.popover.side && !validSides.includes(step.popover.side)) {
+      var validSides = ['top', 'right', 'bottom', 'left'];
+      if (step.popover.side && validSides.indexOf(step.popover.side) === -1) {
         throw new TamperGuideError(
           ErrorCodes.INVALID_STEP,
-          `"popover.side" in step ${index} has an invalid value: "${step.popover.side}". Valid values: ${validSides.join(', ')}`
+          '"popover.side" in step ' + index + ' has an invalid value: "' + step.popover.side + '". Valid values: ' + validSides.join(', ')
         );
       }
 
-      const validAligns = ['start', 'center', 'end'];
-      if (step.popover.align && !validAligns.includes(step.popover.align)) {
+      var validAligns = ['start', 'center', 'end'];
+      if (step.popover.align && validAligns.indexOf(step.popover.align) === -1) {
         throw new TamperGuideError(
           ErrorCodes.INVALID_STEP,
-          `"popover.align" in step ${index} has an invalid value: "${step.popover.align}". Valid values: ${validAligns.join(', ')}`
+          '"popover.align" in step ' + index + ' has an invalid value: "' + step.popover.align + '". Valid values: ' + validAligns.join(', ')
         );
       }
     }
@@ -208,7 +213,7 @@
     if (!step.element && !step.popover) {
       throw new TamperGuideError(
         ErrorCodes.INVALID_STEP,
-        `Step ${index} has neither "element" nor "popover". At least one is required.`
+        'Step ' + index + ' has neither "element" nor "popover". At least one is required.'
       );
     }
   }
@@ -223,7 +228,7 @@
    * @returns {{ getState: Function, setState: Function, resetState: Function }}
    */
   function createStateManager() {
-    const initialState = {
+    var initialState = {
       isInitialized: false,
       activeIndex: undefined,
       activeElement: undefined,
@@ -234,32 +239,34 @@
       __focusedBeforeActivation: null,
     };
 
-    let state = { ...initialState };
+    var state = {};
+    for (var k in initialState) { state[k] = initialState[k]; }
 
     function getState(key) {
       if (key !== undefined) {
         return state[key];
       }
-      return { ...state };
+      var copy = {};
+      for (var k in state) { copy[k] = state[k]; }
+      return copy;
     }
 
     function setState(key, value) {
-      state = { ...state, [key]: value };
+      state[key] = value;
     }
 
     function resetState() {
-      state = { ...initialState };
+      for (var k in initialState) { state[k] = initialState[k]; }
     }
 
-    return { getState, setState, resetState };
+    return { getState: getState, setState: setState, resetState: resetState };
   }
 
   // =========================================================================
   // MODULE: Configuration Manager
   // =========================================================================
 
-  /** @type {Readonly<Object>} Default configuration values */
-  const DEFAULT_CONFIG = Object.freeze({
+  var DEFAULT_CONFIG = Object.freeze({
     steps: [],
     animate: true,
     overlayColor: '#000',
@@ -298,21 +305,28 @@
    * @returns {{ getConfig: Function, setConfig: Function }}
    */
   function createConfigManager(userConfig) {
-    let config = { ...DEFAULT_CONFIG, ...userConfig };
+    var config = {};
+    var dk = Object.keys(DEFAULT_CONFIG);
+    for (var i = 0; i < dk.length; i++) { config[dk[i]] = DEFAULT_CONFIG[dk[i]]; }
+    var uk = Object.keys(userConfig);
+    for (var j = 0; j < uk.length; j++) { config[uk[j]] = userConfig[uk[j]]; }
 
     function getConfig(key) {
       if (key !== undefined) {
         return config[key];
       }
-      return { ...config };
+      var copy = {};
+      for (var k in config) { copy[k] = config[k]; }
+      return copy;
     }
 
     function setConfig(newConfig) {
       validateConfig(newConfig);
-      config = { ...config, ...newConfig };
+      var nk = Object.keys(newConfig);
+      for (var i = 0; i < nk.length; i++) { config[nk[i]] = newConfig[nk[i]]; }
     }
 
-    return { getConfig, setConfig };
+    return { getConfig: getConfig, setConfig: setConfig };
   }
 
   // =========================================================================
@@ -325,47 +339,56 @@
    * @returns {{ on: Function, off: Function, emit: Function, destroy: Function }}
    */
   function createEmitter() {
-    const listeners = new Map();
+    var listeners = {};
 
     function on(event, callback) {
-      if (!listeners.has(event)) {
-        listeners.set(event, []);
+      if (!listeners[event]) {
+        listeners[event] = [];
       }
-      listeners.get(event).push(callback);
+      listeners[event].push(callback);
     }
 
     function off(event, callback) {
-      if (!listeners.has(event)) return;
-      const callbacks = listeners.get(event);
-      const index = callbacks.indexOf(callback);
-      if (index > -1) {
-        callbacks.splice(index, 1);
+      if (!listeners[event]) return;
+      var idx = listeners[event].indexOf(callback);
+      if (idx > -1) {
+        listeners[event].splice(idx, 1);
       }
     }
 
-    function emit(event, ...args) {
-      if (!listeners.has(event)) return;
-      for (const callback of listeners.get(event)) {
+    function emit(event) {
+      if (!listeners[event]) return;
+      var args = Array.prototype.slice.call(arguments, 1);
+      var cbs = listeners[event].slice();
+      for (var i = 0; i < cbs.length; i++) {
         try {
-          callback(...args);
+          cbs[i].apply(null, args);
         } catch (err) {
-          warn(ErrorCodes.HOOK_ERROR, `Error in listener for event "${event}": ${err.message}`);
+          warn(ErrorCodes.HOOK_ERROR, 'Error in listener for event "' + event + '": ' + err.message);
         }
       }
     }
 
     function destroy() {
-      listeners.clear();
+      listeners = {};
     }
 
-    return { on, off, emit, destroy };
+    return { on: on, off: off, emit: emit, destroy: destroy };
   }
 
   // =========================================================================
   // MODULE: CSS Styles (auto-injection)
   // =========================================================================
 
-  const STYLE_ID = 'tamperguide-styles';
+  var STYLE_ID = 'tamperguide-styles';
+
+  // Z-index layers used throughout the library.
+  // Overlay sits below the highlighted element and popover sits on top.
+  // The highlighted element (and its fixed/absolute ancestors) are boosted
+  // to Z_HIGHLIGHTED so they render above the overlay but below the popover.
+  var Z_OVERLAY = 2147483644;
+  var Z_HIGHLIGHTED = 2147483645;
+  var Z_POPOVER = 2147483646;
 
   /**
    * Injects the required CSS styles into the document.
@@ -374,240 +397,182 @@
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
 
-    const css = `
-      /* ===== TamperGuide Overlay ===== */
-      .tg-overlay {
-        position: fixed;
-        inset: 0;
-        z-index: 2147483640;
-        pointer-events: none;
-        transition: opacity 0.3s ease;
-      }
+    var css = [
+      '/* ===== TamperGuide Overlay ===== */',
+      '.tg-overlay {',
+      '  position: fixed;',
+      '  inset: 0;',
+      '  z-index: ' + Z_OVERLAY + ';',
+      '  pointer-events: none;',
+      '  transition: opacity 0.3s ease;',
+      '}',
+      '.tg-overlay svg {',
+      '  position: absolute;',
+      '  inset: 0;',
+      '  width: 100%;',
+      '  height: 100%;',
+      '}',
+      '.tg-overlay-clickable {',
+      '  pointer-events: auto;',
+      '  cursor: default;',
+      '}',
+      '',
+      '/* ===== TamperGuide Popover ===== */',
+      '.tg-popover {',
+      '  all: initial;',
+      '  position: fixed;',
+      '  z-index: ' + Z_POPOVER + ';',
+      '  background: #fff;',
+      '  color: #1a1a2e;',
+      '  border-radius: 8px;',
+      '  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25), 0 2px 8px rgba(0, 0, 0, 0.1);',
+      '  padding: 16px 20px;',
+      '  max-width: 380px;',
+      '  min-width: 240px;',
+      '  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;',
+      '  font-size: 14px;',
+      '  line-height: 1.5;',
+      '  opacity: 0;',
+      '  pointer-events: auto;',
+      '  box-sizing: border-box;',
+      '  word-wrap: break-word;',
+      '  overflow-wrap: break-word;',
+      '}',
+      '.tg-popover *, .tg-popover *::before, .tg-popover *::after {',
+      '  box-sizing: border-box;',
+      '}',
+      '.tg-popover-visible { opacity: 1; }',
+      '.tg-popover-animated {',
+      '  transition: opacity 0.25s ease, transform 0.25s ease;',
+      '}',
+      '',
+      '/* ===== Popover Arrow ===== */',
+      '.tg-popover-arrow {',
+      '  position: absolute;',
+      '  width: 12px;',
+      '  height: 12px;',
+      '  background: #fff;',
+      '  transform: rotate(45deg);',
+      '  z-index: -1;',
+      '}',
+      '.tg-popover-arrow-top {',
+      '  bottom: -6px;',
+      '  left: 50%;',
+      '  margin-left: -6px;',
+      '  box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.05);',
+      '}',
+      '.tg-popover-arrow-bottom {',
+      '  top: -6px;',
+      '  left: 50%;',
+      '  margin-left: -6px;',
+      '  box-shadow: -2px -2px 4px rgba(0, 0, 0, 0.05);',
+      '}',
+      '.tg-popover-arrow-left {',
+      '  right: -6px;',
+      '  top: 50%;',
+      '  margin-top: -6px;',
+      '  box-shadow: 2px -2px 4px rgba(0, 0, 0, 0.05);',
+      '}',
+      '.tg-popover-arrow-right {',
+      '  left: -6px;',
+      '  top: 50%;',
+      '  margin-top: -6px;',
+      '  box-shadow: -2px 2px 4px rgba(0, 0, 0, 0.05);',
+      '}',
+      '',
+      '/* ===== Popover Content ===== */',
+      '.tg-popover-title {',
+      '  display: block;',
+      '  font-size: 16px;',
+      '  font-weight: 700;',
+      '  margin: 0 0 8px 0;',
+      '  padding: 0;',
+      '  color: #0f0f23;',
+      '  line-height: 1.3;',
+      '}',
+      '.tg-popover-description {',
+      '  display: block;',
+      '  font-size: 14px;',
+      '  font-weight: 400;',
+      '  margin: 0 0 16px 0;',
+      '  padding: 0;',
+      '  color: #4a4a6a;',
+      '  line-height: 1.6;',
+      '}',
+      '.tg-popover-description:last-child { margin-bottom: 0; }',
+      '',
+      '/* ===== Popover Footer ===== */',
+      '.tg-popover-footer {',
+      '  display: flex;',
+      '  align-items: center;',
+      '  justify-content: space-between;',
+      '  gap: 8px;',
+      '  margin-top: 4px;',
+      '}',
+      '.tg-popover-progress {',
+      '  font-size: 12px;',
+      '  color: #8888aa;',
+      '  font-weight: 500;',
+      '  flex-shrink: 0;',
+      '}',
+      '.tg-popover-buttons {',
+      '  display: flex;',
+      '  gap: 6px;',
+      '  margin-left: auto;',
+      '}',
+      '.tg-popover-btn {',
+      '  display: inline-flex;',
+      '  align-items: center;',
+      '  justify-content: center;',
+      '  border: none;',
+      '  border-radius: 6px;',
+      '  padding: 6px 14px;',
+      '  font-size: 13px;',
+      '  font-weight: 600;',
+      '  cursor: pointer;',
+      '  transition: background-color 0.15s ease, transform 0.1s ease;',
+      '  font-family: inherit;',
+      '  line-height: 1.4;',
+      '  white-space: nowrap;',
+      '  text-decoration: none;',
+      '  outline: none;',
+      '}',
+      '.tg-popover-btn:active { transform: scale(0.96); }',
+      '.tg-popover-btn:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; }',
+      '.tg-popover-btn-prev { background: #f0f0f5; color: #4a4a6a; }',
+      '.tg-popover-btn-prev:hover { background: #e0e0ea; }',
+      '.tg-popover-btn-next, .tg-popover-btn-done { background: #3b82f6; color: #fff; }',
+      '.tg-popover-btn-next:hover, .tg-popover-btn-done:hover { background: #2563eb; }',
+      '.tg-popover-btn-close {',
+      '  position: absolute;',
+      '  top: 8px;',
+      '  right: 8px;',
+      '  background: transparent;',
+      '  border: none;',
+      '  font-size: 18px;',
+      '  color: #aaa;',
+      '  cursor: pointer;',
+      '  padding: 2px 6px;',
+      '  border-radius: 4px;',
+      '  line-height: 1;',
+      '  transition: color 0.15s ease, background-color 0.15s ease;',
+      '  text-decoration: none;',
+      '  outline: none;',
+      '}',
+      '.tg-popover-btn-close:hover { color: #333; background: #f0f0f5; }',
+      '.tg-popover-btn-close:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; }',
+      '',
+      '/* ===== Animations ===== */',
+      '@keyframes tg-fadeIn {',
+      '  from { opacity: 0; transform: translateY(4px); }',
+      '  to { opacity: 1; transform: translateY(0); }',
+      '}',
+      '.tg-popover-enter {',
+      '  animation: tg-fadeIn 0.25s ease forwards;',
+      '}',
+    ].join('\n');
 
-      .tg-overlay svg {
-        position: absolute;
-        inset: 0;
-        width: 100%;
-        height: 100%;
-      }
-
-      .tg-overlay-clickable {
-        pointer-events: auto;
-        cursor: default;
-      }
-
-      /* ===== TamperGuide Popover ===== */
-      .tg-popover {
-        all: initial;
-        position: fixed;
-        z-index: 2147483642;
-        background: #fff;
-        color: #1a1a2e;
-        border-radius: 8px;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25), 0 2px 8px rgba(0, 0, 0, 0.1);
-        padding: 16px 20px;
-        max-width: 380px;
-        min-width: 240px;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-        font-size: 14px;
-        line-height: 1.5;
-        opacity: 0;
-        pointer-events: auto;
-        box-sizing: border-box;
-        word-wrap: break-word;
-        overflow-wrap: break-word;
-      }
-
-      .tg-popover *,
-      .tg-popover *::before,
-      .tg-popover *::after {
-        box-sizing: border-box;
-      }
-
-      .tg-popover-visible {
-        opacity: 1;
-      }
-
-      .tg-popover-animated {
-        transition: opacity 0.25s ease, transform 0.25s ease;
-      }
-
-      /* ===== Popover Arrow ===== */
-      .tg-popover-arrow {
-        position: absolute;
-        width: 12px;
-        height: 12px;
-        background: #fff;
-        transform: rotate(45deg);
-        z-index: -1;
-      }
-
-      .tg-popover-arrow-top {
-        bottom: -6px;
-        left: 50%;
-        margin-left: -6px;
-        box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.05);
-      }
-
-      .tg-popover-arrow-bottom {
-        top: -6px;
-        left: 50%;
-        margin-left: -6px;
-        box-shadow: -2px -2px 4px rgba(0, 0, 0, 0.05);
-      }
-
-      .tg-popover-arrow-left {
-        right: -6px;
-        top: 50%;
-        margin-top: -6px;
-        box-shadow: 2px -2px 4px rgba(0, 0, 0, 0.05);
-      }
-
-      .tg-popover-arrow-right {
-        left: -6px;
-        top: 50%;
-        margin-top: -6px;
-        box-shadow: -2px 2px 4px rgba(0, 0, 0, 0.05);
-      }
-
-      /* ===== Popover Content ===== */
-      .tg-popover-title {
-        display: block;
-        font-size: 16px;
-        font-weight: 700;
-        margin: 0 0 8px 0;
-        padding: 0;
-        color: #0f0f23;
-        line-height: 1.3;
-      }
-
-      .tg-popover-description {
-        display: block;
-        font-size: 14px;
-        font-weight: 400;
-        margin: 0 0 16px 0;
-        padding: 0;
-        color: #4a4a6a;
-        line-height: 1.6;
-      }
-
-      .tg-popover-description:last-child {
-        margin-bottom: 0;
-      }
-
-      /* ===== Popover Footer ===== */
-      .tg-popover-footer {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-        margin-top: 4px;
-      }
-
-      .tg-popover-progress {
-        font-size: 12px;
-        color: #8888aa;
-        font-weight: 500;
-        flex-shrink: 0;
-      }
-
-      .tg-popover-buttons {
-        display: flex;
-        gap: 6px;
-        margin-left: auto;
-      }
-
-      .tg-popover-btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        border: none;
-        border-radius: 6px;
-        padding: 6px 14px;
-        font-size: 13px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: background-color 0.15s ease, transform 0.1s ease;
-        font-family: inherit;
-        line-height: 1.4;
-        white-space: nowrap;
-        text-decoration: none;
-        outline: none;
-      }
-
-      .tg-popover-btn:active {
-        transform: scale(0.96);
-      }
-
-      .tg-popover-btn:focus-visible {
-        outline: 2px solid #3b82f6;
-        outline-offset: 2px;
-      }
-
-      .tg-popover-btn-prev {
-        background: #f0f0f5;
-        color: #4a4a6a;
-      }
-
-      .tg-popover-btn-prev:hover {
-        background: #e0e0ea;
-      }
-
-      .tg-popover-btn-next,
-      .tg-popover-btn-done {
-        background: #3b82f6;
-        color: #fff;
-      }
-
-      .tg-popover-btn-next:hover,
-      .tg-popover-btn-done:hover {
-        background: #2563eb;
-      }
-
-      .tg-popover-btn-close {
-        position: absolute;
-        top: 8px;
-        right: 8px;
-        background: transparent;
-        border: none;
-        font-size: 18px;
-        color: #aaa;
-        cursor: pointer;
-        padding: 2px 6px;
-        border-radius: 4px;
-        line-height: 1;
-        transition: color 0.15s ease, background-color 0.15s ease;
-        text-decoration: none;
-        outline: none;
-      }
-
-      .tg-popover-btn-close:hover {
-        color: #333;
-        background: #f0f0f5;
-      }
-
-      .tg-popover-btn-close:focus-visible {
-        outline: 2px solid #3b82f6;
-        outline-offset: 2px;
-      }
-
-      /* ===== Body class when tour is active ===== */
-      body.tg-active {
-        overflow: hidden !important;
-      }
-
-      /* ===== Animations ===== */
-      @keyframes tg-fadeIn {
-        from { opacity: 0; transform: translateY(4px); }
-        to { opacity: 1; transform: translateY(0); }
-      }
-
-      .tg-popover-enter {
-        animation: tg-fadeIn 0.25s ease forwards;
-      }
-    `;
-
-    const style = document.createElement('style');
+    var style = document.createElement('style');
     style.id = STYLE_ID;
     style.textContent = css;
     (document.head || document.documentElement).appendChild(style);
@@ -617,7 +582,7 @@
    * Removes the injected styles from the document.
    */
   function removeStyles() {
-    const el = document.getElementById(STYLE_ID);
+    var el = document.getElementById(STYLE_ID);
     if (el) el.remove();
   }
 
@@ -635,7 +600,7 @@
 
     try {
       if (typeof element === 'function') {
-        const result = element();
+        var result = element();
         if (result instanceof Element) return result;
         warn(ErrorCodes.ELEMENT_NOT_FOUND, 'The element() function did not return a valid DOM Element.');
         return null;
@@ -646,29 +611,32 @@
       }
 
       if (typeof element === 'string') {
-        const found = document.querySelector(element);
+        var found = document.querySelector(element);
         if (!found) {
           warn(
             ErrorCodes.ELEMENT_NOT_FOUND,
-            `No element found with selector "${element}". ` +
+            'No element found with selector "' + element + '". ' +
             'Verify the selector is correct and the element exists in the DOM.'
           );
         }
         return found;
       }
     } catch (err) {
-      warn(ErrorCodes.ELEMENT_NOT_FOUND, `Error resolving element: ${err.message}`);
+      warn(ErrorCodes.ELEMENT_NOT_FOUND, 'Error resolving element: ' + err.message);
     }
 
     return null;
   }
 
   /**
-   * Gets the bounding rect of an element with stage padding.
+   * Gets the bounding rect of an element with stage padding applied.
+   * Uses getBoundingClientRect which returns viewport-relative coordinates
+   * and works correctly for elements inside position:fixed containers.
+   *
    * @param {Element} element - Target element
    * @param {number} [padding=0] - Extra padding around the element
    * @param {number} [radius=0] - Border radius for the cutout
-   * @returns {Object} Rectangle with x, y, width, height, radius, and raw data
+   * @returns {Object} Rectangle with x, y, width, height, radius
    */
   function getElementRect(element, padding, radius) {
     padding = padding || 0;
@@ -680,25 +648,25 @@
       width: rect.width + padding * 2,
       height: rect.height + padding * 2,
       radius: radius,
-      raw: {
-        left: rect.left,
-        top: rect.top,
-        right: rect.right,
-        bottom: rect.bottom,
-        width: rect.width,
-        height: rect.height,
-      },
     };
   }
 
   /**
    * Scrolls the viewport so the given element is visible.
    * Only scrolls if the element is not already fully in view.
+   * Skips scrolling for elements inside position:fixed containers
+   * since they are always in the viewport by definition.
+   *
    * @param {Element} element - Target element
    * @param {ScrollIntoViewOptions} [options] - Scroll behavior options
    */
   function bringIntoView(element, options) {
     if (!element || typeof element.scrollIntoView !== 'function') return;
+
+    // Do not scroll if the element is inside a position:fixed ancestor.
+    // Fixed elements are always relative to the viewport and scrolling
+    // would move the background page instead of bringing the element closer.
+    if (isInsideFixedContainer(element)) return;
 
     options = options || { behavior: 'smooth', block: 'center' };
 
@@ -718,16 +686,33 @@
     }
   }
 
+  /**
+   * Checks whether the given element is inside a position:fixed ancestor.
+   * @param {Element} element
+   * @returns {boolean}
+   */
+  function isInsideFixedContainer(element) {
+    var current = element;
+    while (current && current !== document.body && current !== document.documentElement) {
+      if (window.getComputedStyle(current).position === 'fixed') {
+        return true;
+      }
+      current = current.parentElement;
+    }
+    return false;
+  }
+
   // =========================================================================
   // MODULE: Overlay Manager (SVG-based cutout)
   // =========================================================================
 
   /**
    * Creates and manages the overlay with an SVG cutout (spotlight effect).
-   * Uses SVG path with evenodd fill-rule to avoid z-index stacking issues.
+   * Uses SVG path with evenodd fill-rule to create a transparent hole
+   * in the dark overlay, avoiding z-index stacking issues.
    *
    * @param {{ getConfig: Function }} configManager - Configuration manager
-   * @returns {{ show, updateHighlight, handleResize, hide, destroy, getElement, setClickHandler }}
+   * @returns {Object}
    */
   function createOverlayManager(configManager) {
     var overlayEl = null;
@@ -747,7 +732,6 @@
       overlayEl.appendChild(svgEl);
       document.body.appendChild(overlayEl);
 
-      // Delegate click events on the SVG overlay path
       overlayEl.addEventListener('click', function (e) {
         if (
           e.target.classList.contains('tg-overlay-clickable') ||
@@ -785,18 +769,16 @@
       }
 
       currentRect = rect;
-      var x = rect.x;
-      var y = rect.y;
-      var rw = rect.width;
-      var rh = rect.height;
+      var x = Math.max(0, rect.x);
+      var y = Math.max(0, rect.y);
+      var rw = Math.min(rect.width, w - x);
+      var rh = Math.min(rect.height, h - y);
       var r = Math.min(rect.radius || 0, rw / 2, rh / 2);
 
-      // Outer path covers the entire viewport
       var outer = 'M 0 0 H ' + w + ' V ' + h + ' H 0 Z';
       var inner;
 
       if (r > 0) {
-        // Rounded rectangle cutout using quadratic bezier curves
         inner =
           'M ' + (x + r) + ' ' + y +
           ' H ' + (x + rw - r) +
@@ -858,7 +840,15 @@
       clickHandler = handler;
     }
 
-    return { show, updateHighlight, handleResize, hide, destroy, getElement, setClickHandler };
+    return {
+      show: show,
+      updateHighlight: updateHighlight,
+      handleResize: handleResize,
+      hide: hide,
+      destroy: destroy,
+      getElement: getElement,
+      setClickHandler: setClickHandler,
+    };
   }
 
   // =========================================================================
@@ -869,14 +859,13 @@
    * Creates and manages the popover (informational tooltip).
    * Handles rendering, positioning, arrow placement, and auto-side detection.
    *
-   * @param {{ getConfig: Function }} configManager - Configuration manager
-   * @returns {{ render, reposition, hide, destroy, getElement }}
+   * @param {{ getConfig: Function }} configManager
+   * @returns {Object}
    */
   function createPopoverManager(configManager) {
     var popoverEl = null;
     var arrowEl = null;
     var currentStep = null;
-    var currentTarget = null;
 
     function create() {
       if (popoverEl) return;
@@ -909,14 +898,13 @@
      * Renders the popover content for a given step.
      * @param {Object} step - The current step object
      * @param {Element|null} targetElement - The highlighted element
-     * @param {Object} tourState - Current state { activeIndex, totalSteps, isFirst, isLast }
+     * @param {Object} tourState - { activeIndex, totalSteps, isFirst, isLast }
      */
     function render(step, targetElement, tourState) {
       tourState = tourState || {};
       create();
 
       currentStep = step;
-      currentTarget = targetElement;
 
       var popover = step.popover || {};
       var config = configManager.getConfig();
@@ -929,7 +917,6 @@
         }
       }
 
-      // Reset visibility for repositioning calculations
       popoverEl.classList.remove('tg-popover-visible', 'tg-popover-enter');
 
       var showButtons = popover.showButtons || config.showButtons;
@@ -968,7 +955,7 @@
         popoverEl.appendChild(descEl);
       }
 
-      // Footer: progress text + navigation buttons
+      // Footer
       var hasNavButtons = showButtons.indexOf('next') !== -1 || showButtons.indexOf('previous') !== -1;
       var showProgress = popover.showProgress !== undefined ? popover.showProgress : config.showProgress;
 
@@ -976,7 +963,6 @@
         var footerEl = document.createElement('div');
         footerEl.classList.add('tg-popover-footer');
 
-        // Progress text
         if (showProgress && tourState.totalSteps > 0) {
           var progressEl = document.createElement('span');
           progressEl.classList.add('tg-popover-progress');
@@ -987,11 +973,9 @@
           footerEl.appendChild(progressEl);
         }
 
-        // Navigation buttons container
         var buttonsEl = document.createElement('div');
         buttonsEl.classList.add('tg-popover-buttons');
 
-        // Previous button (hidden on first step)
         if (showButtons.indexOf('previous') !== -1 && !tourState.isFirst) {
           var prevBtn = document.createElement('button');
           prevBtn.classList.add('tg-popover-btn', 'tg-popover-btn-prev');
@@ -1000,7 +984,6 @@
           buttonsEl.appendChild(prevBtn);
         }
 
-        // Next / Done button
         if (showButtons.indexOf('next') !== -1) {
           var nextBtn = document.createElement('button');
           if (tourState.isLast) {
@@ -1018,7 +1001,7 @@
         popoverEl.appendChild(footerEl);
       }
 
-      // Hook: onPopoverRender allows custom DOM manipulation
+      // Hook: onPopoverRender
       var onPopoverRender = popover.onPopoverRender || config.onPopoverRender;
       if (onPopoverRender) {
         try {
@@ -1028,10 +1011,8 @@
         }
       }
 
-      // Position the popover relative to the target element
       reposition(targetElement, step);
 
-      // Reveal with animation on the next frame
       requestAnimationFrame(function () {
         if (popoverEl) {
           popoverEl.classList.add('tg-popover-visible', 'tg-popover-enter');
@@ -1041,11 +1022,11 @@
 
     /**
      * Repositions the popover relative to the target element.
-     * Automatically calculates the best side if not specified.
-     * Clamps to viewport boundaries with a safe margin.
+     * Uses getBoundingClientRect for viewport-relative coordinates,
+     * which works correctly for elements inside position:fixed containers.
      *
-     * @param {Element|null} targetElement - The highlighted element
-     * @param {Object} [step] - The current step
+     * @param {Element|null} targetElement
+     * @param {Object} [step]
      */
     function reposition(targetElement, step) {
       if (!popoverEl) return;
@@ -1067,7 +1048,15 @@
       popoverEl.style.transform = '';
 
       var targetRect = targetElement.getBoundingClientRect();
+
+      // Temporarily make popover visible but off-screen to measure it
+      popoverEl.style.visibility = 'hidden';
+      popoverEl.style.display = 'block';
+      popoverEl.style.top = '0';
+      popoverEl.style.left = '0';
       var popoverRect = popoverEl.getBoundingClientRect();
+      popoverEl.style.visibility = '';
+
       var side = popover.side || calculateBestSide(targetRect, popoverRect);
       var align = popover.align || 'center';
 
@@ -1101,7 +1090,7 @@
           setArrowClass('bottom');
       }
 
-      // Clamp to viewport edges with a safe margin
+      // Clamp to viewport edges
       var margin = 8;
       top = Math.max(margin, Math.min(top, window.innerHeight - popoverRect.height - margin));
       left = Math.max(margin, Math.min(left, window.innerWidth - popoverRect.width - margin));
@@ -1113,7 +1102,6 @@
 
     /**
      * Determines the best side to place the popover based on available space.
-     * Prefers bottom, then picks the side with the most room.
      */
     function calculateBestSide(targetRect, popoverRect) {
       var spaces = [
@@ -1123,7 +1111,6 @@
         { side: 'left', space: targetRect.left },
       ];
 
-      // Find first side with enough space (minimum: popover dimension + 20px buffer)
       for (var i = 0; i < spaces.length; i++) {
         var s = spaces[i];
         var needed = (s.side === 'top' || s.side === 'bottom') ? popoverRect.height : popoverRect.width;
@@ -1132,7 +1119,6 @@
         }
       }
 
-      // Fallback: side with the most available space
       spaces.sort(function (a, b) { return b.space - a.space; });
       return spaces[0].side;
     }
@@ -1173,7 +1159,6 @@
         popoverEl = null;
         arrowEl = null;
         currentStep = null;
-        currentTarget = null;
       }
     }
 
@@ -1181,7 +1166,13 @@
       return popoverEl;
     }
 
-    return { render, reposition, hide, destroy, getElement };
+    return {
+      render: render,
+      reposition: reposition,
+      hide: hide,
+      destroy: destroy,
+      getElement: getElement,
+    };
   }
 
   // =========================================================================
@@ -1189,15 +1180,23 @@
   // =========================================================================
 
   /**
-   * Manages element highlighting (scroll, overlay cutout).
+   * Manages element highlighting: z-index boosting, overlay cutout, scrolling.
+   *
+   * The key challenge for userscript panels is that the target elements live
+   * inside a position:fixed container with a high z-index. The overlay must
+   * sit above the page but below the panel, and the popover must sit above
+   * everything. This module walks up the DOM tree from the target element
+   * to find and temporarily boost the z-index of its fixed/absolute ancestors
+   * so they render between the overlay and the popover.
    *
    * @param {{ getConfig: Function }} configManager
    * @param {Object} overlayManager
-   * @returns {{ highlight, refresh, destroy, getActiveElement }}
+   * @returns {Object}
    */
   function createHighlightManager(configManager, overlayManager) {
     var activeElement = null;
     var dummyElement = null;
+    var boostedElements = [];
 
     /**
      * Creates an invisible dummy element centered in the viewport.
@@ -1217,11 +1216,49 @@
     }
 
     /**
-     * Highlights an element by scrolling to it and updating the overlay cutout.
-     * If element is null, creates a dummy for modal-style display.
-     *
-     * @param {Element|null} element - The target element
-     * @returns {Element} The element that was highlighted (may be dummy)
+     * Boosts the z-index of the target element and its positioned ancestors
+     * so they appear above the overlay. Stores originals for cleanup.
+     * @param {Element} element
+     */
+    function boostZIndex(element) {
+      clearZIndexBoost();
+
+      if (!element || element.id === 'tg-dummy-element') return;
+
+      var current = element;
+      while (current && current !== document.body && current !== document.documentElement) {
+        var computedPosition = window.getComputedStyle(current).position;
+
+        boostedElements.push({
+          element: current,
+          originalZIndex: current.style.zIndex || '',
+        });
+
+        current.style.zIndex = String(Z_HIGHLIGHTED);
+
+        // Stop at the first fixed or absolute ancestor (the panel root)
+        if (computedPosition === 'fixed' || computedPosition === 'absolute') {
+          break;
+        }
+
+        current = current.parentElement;
+      }
+    }
+
+    /**
+     * Restores all z-index values that were previously boosted.
+     */
+    function clearZIndexBoost() {
+      for (var i = 0; i < boostedElements.length; i++) {
+        boostedElements[i].element.style.zIndex = boostedElements[i].originalZIndex;
+      }
+      boostedElements = [];
+    }
+
+    /**
+     * Highlights an element: boosts z-index, scrolls if needed, updates cutout.
+     * @param {Element|null} element
+     * @returns {Element}
      */
     function highlight(element) {
       var target = element || getOrCreateDummy();
@@ -1229,12 +1266,12 @@
 
       var config = configManager.getConfig();
 
-      // Scroll the element into view if needed
+      boostZIndex(target);
+
       if (element && config.smoothScroll) {
         bringIntoView(element, config.scrollIntoViewOptions);
       }
 
-      // Wait for scroll to settle before calculating position
       requestAnimationFrame(function () {
         refresh();
       });
@@ -1244,7 +1281,6 @@
 
     /**
      * Refreshes the overlay cutout position for the currently active element.
-     * Should be called on window resize or DOM changes.
      */
     function refresh() {
       if (!activeElement) return;
@@ -1260,6 +1296,7 @@
     }
 
     function destroy() {
+      clearZIndexBoost();
       if (dummyElement && dummyElement.parentNode) {
         dummyElement.remove();
       }
@@ -1271,7 +1308,12 @@
       return activeElement;
     }
 
-    return { highlight: highlight, refresh: refresh, destroy: destroy, getActiveElement: getActiveElement };
+    return {
+      highlight: highlight,
+      refresh: refresh,
+      destroy: destroy,
+      getActiveElement: getActiveElement,
+    };
   }
 
   // =========================================================================
@@ -1279,20 +1321,13 @@
   // =========================================================================
 
   /**
-   * Manages global DOM event listeners (keyboard, resize, clicks).
-   * Properly cleans up all listeners on destroy.
-   *
-   * @param {Object} deps - Dependencies
-   * @param {Object} deps.configManager
-   * @param {Object} deps.stateManager
-   * @param {Object} deps.popoverManager
-   * @param {Object} deps.emitter
-   * @returns {{ init: Function, destroy: Function }}
+   * Manages global DOM event listeners (keyboard, resize).
+   * @param {Object} deps
+   * @returns {Object}
    */
   function createEventsManager(deps) {
     var configManager = deps.configManager;
     var stateManager = deps.stateManager;
-    var popoverManager = deps.popoverManager;
     var emitter = deps.emitter;
     var boundHandlers = [];
 
@@ -1319,13 +1354,11 @@
             emitter.emit('close');
           }
           break;
-
         case 'ArrowRight':
           e.preventDefault();
           e.stopPropagation();
           emitter.emit('next');
           break;
-
         case 'Tab':
           e.preventDefault();
           e.stopPropagation();
@@ -1335,7 +1368,6 @@
             emitter.emit('next');
           }
           break;
-
         case 'ArrowLeft':
           e.preventDefault();
           e.stopPropagation();
@@ -1366,10 +1398,8 @@
 
   /**
    * Routes click events from the popover and overlay to the correct actions.
-   * Keeps click handling logic separate from the events manager.
-   *
    * @param {Object} deps
-   * @returns {{ init: Function, destroy: Function }}
+   * @returns {Object}
    */
   function createClickRouter(deps) {
     var configManager = deps.configManager;
@@ -1377,13 +1407,13 @@
     var popoverManager = deps.popoverManager;
     var overlayManager = deps.overlayManager;
     var emitter = deps.emitter;
+    var docHandler = null;
 
     function handleDocumentClick(e) {
       if (!stateManager.getState('isInitialized')) return;
 
       var popoverEl = popoverManager.getElement();
 
-      // Clicks inside the popover
       if (popoverEl && popoverEl.contains(e.target)) {
         if (
           e.target.classList.contains('tg-popover-btn-next') ||
@@ -1394,22 +1424,18 @@
           emitter.emit('next');
           return;
         }
-
         if (e.target.classList.contains('tg-popover-btn-prev')) {
           e.preventDefault();
           e.stopPropagation();
           emitter.emit('prev');
           return;
         }
-
         if (e.target.classList.contains('tg-popover-btn-close')) {
           e.preventDefault();
           e.stopPropagation();
           emitter.emit('close');
           return;
         }
-
-        // Other clicks inside popover — do nothing, don't propagate
         return;
       }
     }
@@ -1420,8 +1446,6 @@
         emitter.emit('close');
       }
     }
-
-    var docHandler = null;
 
     function init() {
       docHandler = function (e) { handleDocumentClick(e); };
@@ -1449,33 +1473,12 @@
    *
    * @param {Object} [options={}] - Driver configuration
    * @returns {Object} Public driver API
-   *
-   * @example
-   * // Basic tour
-   * const guide = tamperGuide({
-   *   showProgress: true,
-   *   steps: [
-   *     { element: '#btn', popover: { title: 'Welcome!', description: 'Click here to start.' } },
-   *     { element: '.nav', popover: { title: 'Navigation', description: 'Explore sections.' } },
-   *   ]
-   * });
-   * guide.drive();
-   *
-   * @example
-   * // Simple highlight
-   * const guide = tamperGuide();
-   * guide.highlight({
-   *   element: '#my-button',
-   *   popover: { title: 'Look here!', description: 'This button is important.' }
-   * });
    */
   function tamperGuide(options) {
     options = options || {};
 
-    // Validate configuration upfront
     validateConfig(options);
 
-    // Create all module managers
     var configManager = createConfigManager(options);
     var stateManager = createStateManager();
     var emitter = createEmitter();
@@ -1490,11 +1493,8 @@
 
     /**
      * Safely executes a hook function, catching and logging any errors.
-     * Returns the hook's return value, or undefined on error.
-     *
-     * @param {Function|undefined} hookFn - The hook to execute
-     * @param {...*} args - Arguments to pass to the hook
-     * @returns {*} Hook return value or undefined
+     * @param {Function|undefined} hookFn
+     * @returns {*}
      */
     function safeHook(hookFn) {
       if (!hookFn) return undefined;
@@ -1508,30 +1508,18 @@
     }
 
     /**
-     * Asserts that the instance has not been permanently destroyed.
-     * @param {string} methodName - The method being called
-     * @throws {TamperGuideError}
-     */
-    function assertAlive(methodName) {
-      // The instance can always be reused after destroy()
-      // This is a no-op guard for future extensibility
-    }
-
-    /**
      * Initializes the driver: injects styles, shows overlay, binds events.
-     * Idempotent — safe to call multiple times.
+     * Does NOT lock body scroll — userscript panels need the page to remain
+     * scrollable and interactive underneath.
      */
     function init() {
       if (stateManager.getState('isInitialized')) return;
 
       injectStyles();
       overlayManager.show();
-      document.body.classList.add('tg-active');
 
-      // Save the currently focused element to restore later
       stateManager.setState('__focusedBeforeActivation', document.activeElement);
 
-      // Create and initialize event managers
       eventsManager = createEventsManager({
         configManager: configManager,
         stateManager: stateManager,
@@ -1549,7 +1537,6 @@
       });
       clickRouter.init();
 
-      // Wire up internal emitter events
       emitter.on('next', handleNext);
       emitter.on('prev', handlePrev);
       emitter.on('close', handleClose);
@@ -1560,9 +1547,7 @@
 
     /**
      * Highlights a specific tour step by index.
-     * Resolves the element, fires hooks, updates overlay and popover.
-     *
-     * @param {number} stepIndex - Index of the step to highlight
+     * @param {number} stepIndex
      */
     function highlightStep(stepIndex) {
       var steps = configManager.getConfig('steps');
@@ -1582,7 +1567,6 @@
         );
       }
 
-      // Prevent actions during transitions
       if (stateManager.getState('__transitionInProgress')) return;
       stateManager.setState('__transitionInProgress', true);
 
@@ -1590,7 +1574,7 @@
       var previousStep = stateManager.getState('activeStep');
       var previousElement = stateManager.getState('activeElement');
 
-      // Fire onDeselected hook for the previous step
+      // Fire onDeselected for the previous step
       if (previousStep && previousElement) {
         var deselectedHook = previousStep.onDeselected || configManager.getConfig('onDeselected');
         safeHook(deselectedHook, previousElement, previousStep, {
@@ -1600,10 +1584,9 @@
         });
       }
 
-      // Resolve the target element
       var element = resolveElement(step.element);
 
-      // Fire onHighlightStarted hook
+      // Fire onHighlightStarted
       var highlightStartedHook = step.onHighlightStarted || configManager.getConfig('onHighlightStarted');
       safeHook(highlightStartedHook, element, step, {
         config: configManager.getConfig(),
@@ -1611,20 +1594,16 @@
         driver: api,
       });
 
-      // Update state
       stateManager.setState('previousStep', previousStep);
       stateManager.setState('previousElement', previousElement);
       stateManager.setState('activeStep', step);
       stateManager.setState('activeIndex', stepIndex);
 
-      // Highlight the element (scroll + overlay cutout)
       var highlightedElement = highlightManager.highlight(element);
       stateManager.setState('activeElement', highlightedElement);
 
-      // Hide current popover before showing the new one
       popoverManager.hide();
 
-      // Build tour state for the popover
       var tourState = {
         activeIndex: stepIndex,
         totalSteps: steps.length,
@@ -1632,16 +1611,14 @@
         isLast: stepIndex === steps.length - 1,
       };
 
-      // Delay popover rendering to allow scroll animation to settle
       var delay = configManager.getConfig('animate') ? 300 : 50;
       setTimeout(function () {
         if (!stateManager.getState('isInitialized')) return;
 
         if (step.popover) {
-          popoverManager.render(step, highlightedElement, tourState);
+          popoverManager.render(step, element, tourState);
         }
 
-        // Fire onHighlighted hook
         var highlightedHook = step.onHighlighted || configManager.getConfig('onHighlighted');
         safeHook(highlightedHook, highlightedElement, step, {
           config: configManager.getConfig(),
@@ -1664,7 +1641,6 @@
       var activeStep = stateManager.getState('activeStep');
       var activeElement = stateManager.getState('activeElement');
 
-      // Fire onNextClick hook (step-level overrides global)
       var onNextClick = (activeStep && activeStep.popover && activeStep.popover.onNextClick) || config.onNextClick;
       if (onNextClick) {
         var result = safeHook(onNextClick, activeElement, activeStep, {
@@ -1678,7 +1654,6 @@
       if (currentIndex !== undefined && currentIndex < steps.length - 1) {
         highlightStep(currentIndex + 1);
       } else {
-        // Last step reached — destroy the tour
         performDestroy(false);
       }
     }
@@ -1691,7 +1666,6 @@
       var activeStep = stateManager.getState('activeStep');
       var activeElement = stateManager.getState('activeElement');
 
-      // Fire onPrevClick hook
       var onPrevClick = (activeStep && activeStep.popover && activeStep.popover.onPrevClick) || config.onPrevClick;
       if (onPrevClick) {
         var result = safeHook(onPrevClick, activeElement, activeStep, {
@@ -1714,7 +1688,6 @@
       var activeStep = stateManager.getState('activeStep');
       var activeElement = stateManager.getState('activeElement');
 
-      // Fire onCloseClick hook
       var onCloseClick = (activeStep && activeStep.popover && activeStep.popover.onCloseClick) || config.onCloseClick;
       if (onCloseClick) {
         var result = safeHook(onCloseClick, activeElement, activeStep, {
@@ -1740,9 +1713,8 @@
     }
 
     /**
-     * Performs the full destroy sequence: fires hooks, cleans up DOM, resets state.
-     *
-     * @param {boolean} withDestroyStartedHook - Whether to fire onDestroyStarted first
+     * Performs the full destroy sequence.
+     * @param {boolean} withDestroyStartedHook
      */
     function performDestroy(withDestroyStartedHook) {
       var config = configManager.getConfig();
@@ -1750,7 +1722,6 @@
       var activeStep = stateManager.getState('activeStep');
       var focusedBefore = stateManager.getState('__focusedBeforeActivation');
 
-      // Fire onDestroyStarted hook (allows cancellation)
       if (withDestroyStartedHook) {
         var onDestroyStarted = config.onDestroyStarted;
         if (onDestroyStarted) {
@@ -1759,11 +1730,10 @@
             state: stateManager.getState(),
             driver: api,
           });
-          if (result === false) return; // Cancelled
+          if (result === false) return;
         }
       }
 
-      // Fire onDeselected for the currently active step
       if (activeStep) {
         var deselectedHook = activeStep.onDeselected || config.onDeselected;
         safeHook(deselectedHook, activeElement, activeStep, {
@@ -1773,8 +1743,6 @@
         });
       }
 
-      // Clean up all DOM elements and listeners
-      document.body.classList.remove('tg-active');
       popoverManager.destroy();
       highlightManager.destroy();
       overlayManager.destroy();
@@ -1790,23 +1758,24 @@
       }
 
       emitter.destroy();
+
+      var destroyedStep = activeStep;
+      var destroyedElement = activeElement;
       stateManager.resetState();
 
-      // Fire onDestroyed hook
-      if (activeStep) {
-        safeHook(config.onDestroyed, activeElement, activeStep, {
+      if (destroyedStep) {
+        safeHook(config.onDestroyed, destroyedElement, destroyedStep, {
           config: config,
           state: {},
           driver: api,
         });
       }
 
-      // Restore focus to the element that was focused before the tour
       if (focusedBefore && typeof focusedBefore.focus === 'function') {
         try {
           focusedBefore.focus();
         } catch (e) {
-          // Element may no longer exist — ignore silently
+          // Element may no longer exist
         }
       }
     }
@@ -1814,51 +1783,35 @@
     // ---- Public API ----
 
     var api = {
-      /**
-       * Returns whether the tour/highlight is currently active.
-       * @returns {boolean}
-       */
+      /** Returns whether the tour is currently active. */
       isActive: function () {
         return stateManager.getState('isInitialized') || false;
       },
 
-      /**
-       * Refreshes the highlight and popover positions.
-       * Useful when the DOM changes dynamically (e.g., SPA navigation).
-       */
+      /** Refreshes highlight and popover positions. */
       refresh: function () {
         if (!stateManager.getState('isInitialized')) return;
         handleRefresh();
       },
 
-      /**
-       * Starts the tour from a specific step index.
-       * @param {number} [stepIndex=0] - The step index to start from
-       */
+      /** Starts the tour from a specific step index. */
       drive: function (stepIndex) {
         stepIndex = stepIndex || 0;
         init();
         highlightStep(stepIndex);
       },
 
-      /**
-       * Advances to the next step in the tour.
-       */
+      /** Advances to the next step. */
       moveNext: function () {
         handleNext();
       },
 
-      /**
-       * Goes back to the previous step in the tour.
-       */
+      /** Goes back to the previous step. */
       movePrevious: function () {
         handlePrev();
       },
 
-      /**
-       * Moves directly to a specific step index.
-       * @param {number} stepIndex - The target step index
-       */
+      /** Moves directly to a specific step index. */
       moveTo: function (stepIndex) {
         if (!stateManager.getState('isInitialized')) {
           init();
@@ -1866,94 +1819,50 @@
         highlightStep(stepIndex);
       },
 
-      /**
-       * Returns whether there is a next step available.
-       * @returns {boolean}
-       */
       hasNextStep: function () {
         var steps = configManager.getConfig('steps') || [];
         var activeIndex = stateManager.getState('activeIndex');
         return activeIndex !== undefined && activeIndex < steps.length - 1;
       },
 
-      /**
-       * Returns whether there is a previous step available.
-       * @returns {boolean}
-       */
       hasPreviousStep: function () {
         var activeIndex = stateManager.getState('activeIndex');
         return activeIndex !== undefined && activeIndex > 0;
       },
 
-      /**
-       * Returns whether the current step is the first one.
-       * @returns {boolean}
-       */
       isFirstStep: function () {
         return stateManager.getState('activeIndex') === 0;
       },
 
-      /**
-       * Returns whether the current step is the last one.
-       * @returns {boolean}
-       */
       isLastStep: function () {
         var steps = configManager.getConfig('steps') || [];
         var activeIndex = stateManager.getState('activeIndex');
         return activeIndex !== undefined && activeIndex === steps.length - 1;
       },
 
-      /**
-       * Returns the index of the currently active step.
-       * @returns {number|undefined}
-       */
       getActiveIndex: function () {
         return stateManager.getState('activeIndex');
       },
 
-      /**
-       * Returns the currently active step object.
-       * @returns {Object|undefined}
-       */
       getActiveStep: function () {
         return stateManager.getState('activeStep');
       },
 
-      /**
-       * Returns the currently highlighted DOM element.
-       * @returns {Element|undefined}
-       */
       getActiveElement: function () {
         return stateManager.getState('activeElement');
       },
 
-      /**
-       * Returns the previously highlighted DOM element.
-       * @returns {Element|undefined}
-       */
       getPreviousElement: function () {
         return stateManager.getState('previousElement');
       },
 
-      /**
-       * Returns the previous step object.
-       * @returns {Object|undefined}
-       */
       getPreviousStep: function () {
         return stateManager.getState('previousStep');
       },
 
       /**
        * Highlights a single element without starting a tour.
-       * Useful for contextual help or drawing attention to a specific element.
-       *
        * @param {Object} step - Step object with element and optional popover
-       *
-       * @example
-       * guide.highlight({
-       *   element: '#search',
-       *   popover: { title: 'Search', description: 'Find anything here.' }
-       * });
        */
       highlight: function (step) {
         if (!step || typeof step !== 'object') {
@@ -1977,7 +1886,7 @@
           if (!stateManager.getState('isInitialized')) return;
 
           if (step.popover) {
-            popoverManager.render(step, highlightedElement, {
+            popoverManager.render(step, element, {
               activeIndex: 0,
               totalSteps: 0,
               isFirst: true,
@@ -1987,18 +1896,10 @@
         }, delay);
       },
 
-      /**
-       * Updates the driver configuration. Validates before applying.
-       * @param {Object} config - New configuration to merge
-       */
       setConfig: function (config) {
         configManager.setConfig(config);
       },
 
-      /**
-       * Replaces all tour steps. Resets state and validates the new steps.
-       * @param {DriveStep[]} steps - New array of step objects
-       */
       setSteps: function (steps) {
         if (!Array.isArray(steps)) {
           throw new TamperGuideError(
@@ -2006,36 +1907,22 @@
             'setSteps() requires an Array. Received: ' + typeof steps
           );
         }
-        steps.forEach(function (step, index) {
-          validateStep(step, index);
-        });
-
+        for (var i = 0; i < steps.length; i++) {
+          validateStep(steps[i], i);
+        }
         stateManager.resetState();
         configManager.setConfig({ steps: steps });
       },
 
-      /**
-       * Returns the current configuration (or a specific key).
-       * @param {string} [key] - Specific config key to retrieve
-       * @returns {*}
-       */
       getConfig: function (key) {
         return configManager.getConfig(key);
       },
 
-      /**
-       * Returns the current internal state (or a specific key).
-       * @param {string} [key] - Specific state key to retrieve
-       * @returns {*}
-       */
       getState: function (key) {
         return stateManager.getState(key);
       },
 
-      /**
-       * Destroys the tour completely: removes overlay, popover, cleans events,
-       * resets state, and restores focus. The instance can be reused after this.
-       */
+      /** Destroys the tour: removes overlay, popover, restores z-indexes. */
       destroy: function () {
         performDestroy(false);
       },
@@ -2046,7 +1933,6 @@
 
   // =========================================================================
   // GLOBAL EXPORT
-  // Exposes tamperGuide to the global scope so @require works in Tampermonkey.
   // =========================================================================
 
   if (typeof window !== 'undefined') {
