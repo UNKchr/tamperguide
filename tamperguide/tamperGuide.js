@@ -1,3 +1,12 @@
+// ==UserScript==
+// @name         TamperGuide
+// @namespace    https://github.com/UNKchr/tamperguide
+// @version      1.0.1
+// @author       UNKchr
+// @description  Lightweight library for product tours, highlights, and contextual help in Tampermonkey userscripts.
+// @license      MIT
+// ==/UserScript==
+
 // ===========================================================================
 // TamperGuide v1.0.0
 // Lightweight library for product tours, highlights, and contextual help
