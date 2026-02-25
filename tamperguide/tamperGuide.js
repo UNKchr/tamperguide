@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         TamperGuide
 // @namespace    https://github.com/UNKchr/tamperguide
-// @version      1.4.0
+// @version      1.4.1
 // @author       UNKchr
 // @description  Lightweight library for product tours, highlights, and contextual help in Tampermonkey userscripts.
 // @license      MIT
 // ==/UserScript==
 
 // ===========================================================================
-// TamperGuide v1.4.0
+// TamperGuide v1.4.1
 // ===========================================================================
 
 (function () {
@@ -44,10 +44,7 @@
 
   function validateConfig(config) {
     if (config === null || typeof config !== 'object') {
-      throw new TamperGuideError(
-        ErrorCodes.INVALID_CONFIG,
-        'Configuration must be an object. Received: ' + typeof config
-      );
+      throw new TamperGuideError(ErrorCodes.INVALID_CONFIG, 'Configuration must be an object. Received: ' + typeof config);
     }
     var validKeys = [
       'steps', 'animate', 'overlayColor', 'overlayOpacity', 'stagePadding',
@@ -324,6 +321,25 @@
     return null;
   }
 
+  /**
+   * Returns the usable viewport dimensions, excluding scrollbars.
+   * This matches the coordinate space used by getBoundingClientRect()
+   * and position:fixed elements, ensuring the SVG cutout aligns
+   * perfectly with the highlighted element.
+   *
+   * - document.documentElement.clientWidth excludes the vertical scrollbar
+   * - document.documentElement.clientHeight excludes the horizontal scrollbar
+   * - window.innerWidth/innerHeight INCLUDE scrollbars and cause misalignment
+   *
+   * @returns {{ width: number, height: number }}
+   */
+  function getViewportSize() {
+    return {
+      width: document.documentElement.clientWidth,
+      height: document.documentElement.clientHeight,
+    };
+  }
+
   function getElementRect(element, padding, radius) {
     padding = padding || 0;
     radius = radius || 0;
@@ -341,7 +357,8 @@
     options = options || { behavior: 'smooth', block: 'center' };
     try {
       var r = element.getBoundingClientRect();
-      if (!(r.top >= 0 && r.left >= 0 && r.bottom <= window.innerHeight && r.right <= window.innerWidth)) {
+      var vp = getViewportSize();
+      if (!(r.top >= 0 && r.left >= 0 && r.bottom <= vp.height && r.right <= vp.width)) {
         element.scrollIntoView(options);
       }
     } catch (err) { warn('SCROLL', 'Could not scroll: ' + err.message); }
@@ -356,13 +373,6 @@
     return false;
   }
 
-  /**
-   * Finds the nearest ancestor that creates a stacking context.
-   * This includes fixed, absolute, relative with z-index, sticky,
-   * and elements with transforms or will-change.
-   * @param {Element} element
-   * @returns {Element|null}
-   */
   function findStackingAncestor(element) {
     var c = element ? element.parentElement : null;
     while (c && c !== document.body && c !== document.documentElement) {
@@ -370,29 +380,14 @@
       var pos = style.position;
       var z = style.zIndex;
       var transform = style.transform || style.webkitTransform;
-
-      // Any positioned element with an explicit z-index creates a stacking context
       if (pos !== 'static' && z !== 'auto') return c;
-
-      // Fixed and sticky always create stacking contexts
       if (pos === 'fixed' || pos === 'sticky') return c;
-
-      // Transforms create stacking contexts
       if (transform && transform !== 'none') return c;
-
       c = c.parentElement;
     }
     return null;
   }
 
-  /**
-   * Reads the effective z-index of an element by walking up its
-   * stacking context chain. Returns the highest z-index found.
-   * This handles cases where z-index is inherited through nested
-   * stacking contexts (e.g. a relative parent inside a fixed grandparent).
-   * @param {Element} element
-   * @returns {number}
-   */
   function getEffectiveZIndex(element) {
     var highest = 0;
     var current = element;
@@ -432,20 +427,43 @@
       refreshSVG(null);
     }
 
+    /**
+     * Redraws the SVG overlay with an optional cutout rectangle.
+     *
+     * Uses getViewportSize() (documentElement.clientWidth/clientHeight)
+     * instead of window.innerWidth/innerHeight. This is critical because:
+     *
+     * - getBoundingClientRect() returns coordinates relative to the
+     *   CSS viewport, which EXCLUDES scrollbars.
+     * - window.innerWidth INCLUDES the scrollbar width.
+     * - If we use innerWidth for the SVG but getBoundingClientRect
+     *   for the cutout, there is a mismatch equal to the scrollbar
+     *   width (typically 15-17px), causing the cutout to shift left.
+     *
+     * By using clientWidth/clientHeight for both the SVG dimensions
+     * and the cutout coordinates, the alignment is exact.
+     *
+     * @param {Object|null} rect - Cutout rect or null for full overlay
+     */
     function refreshSVG(rect) {
       if (!svgEl) return;
-      var w = window.innerWidth;
-      var h = window.innerHeight;
+
+      var vp = getViewportSize();
+      var w = vp.width;
+      var h = vp.height;
       var color = configManager.getConfig('overlayColor');
       var opacity = configManager.getConfig('overlayOpacity');
+
       svgEl.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
       svgEl.setAttribute('width', String(w));
       svgEl.setAttribute('height', String(h));
+
       if (!rect) {
         svgEl.innerHTML = '<rect x="0" y="0" width="' + w + '" height="' + h +
           '" fill="' + color + '" fill-opacity="' + opacity + '" class="tg-overlay-clickable" />';
         return;
       }
+
       currentRect = rect;
       var cx = Math.max(0, rect.x), cy = Math.max(0, rect.y);
       var cw = Math.min(rect.width, w - cx), ch = Math.min(rect.height, h - cy);
@@ -630,7 +648,8 @@
       var pr = popoverEl.getBoundingClientRect();
       popoverEl.style.visibility = '';
 
-      var side = popover.side || bestSide(tr, pr);
+      var vp = getViewportSize();
+      var side = popover.side || bestSide(tr, pr, vp);
       var align = popover.align || 'center';
       var top = 0, left = 0;
       switch (side) {
@@ -641,8 +660,8 @@
         default: top = tr.bottom + offset; left = calcA(tr, pr, align, 'h'); side = 'bottom';
       }
       var m = 8;
-      var ct = Math.max(m, Math.min(top, window.innerHeight - pr.height - m));
-      var cl = Math.max(m, Math.min(left, window.innerWidth - pr.width - m));
+      var ct = Math.max(m, Math.min(top, vp.height - pr.height - m));
+      var cl = Math.max(m, Math.min(left, vp.width - pr.width - m));
       popoverEl.style.position = 'fixed';
       popoverEl.style.top = ct + 'px';
       popoverEl.style.left = cl + 'px';
@@ -676,11 +695,12 @@
       }
     }
 
-    function bestSide(tr, pr) {
+    function bestSide(tr, pr, vp) {
+      vp = vp || getViewportSize();
       var s = [
-        { s: 'bottom', v: window.innerHeight - tr.bottom },
+        { s: 'bottom', v: vp.height - tr.bottom },
         { s: 'top', v: tr.top },
-        { s: 'right', v: window.innerWidth - tr.right },
+        { s: 'right', v: vp.width - tr.right },
         { s: 'left', v: tr.left },
       ];
       for (var i = 0; i < s.length; i++) {
@@ -865,18 +885,6 @@
 
     // -----------------------------------------------------------------
     // Determine z-index layers dynamically.
-    //
-    // Strategy:
-    // 1. Probe ALL steps (not just the first) to find elements
-    // 2. For each element, walk up to find its stacking context ancestor
-    // 3. Read the effective z-index of that ancestor chain
-    // 4. Use the HIGHEST z-index found across all steps
-    // 5. Place overlay = highest + 1, popover = highest + 3
-    //
-    // Fallbacks:
-    // - If no elements have positioned ancestors: use high defaults
-    // - If z-index is 'auto' or 0: scan all fixed elements on the page
-    //   that contain our target elements to find the real z-index
     // -----------------------------------------------------------------
     var zOverlay, zPopover;
     var panelZIndex = 0;
@@ -886,24 +894,15 @@
       if (!steps[si].element) continue;
       var probeEl = resolveElement(steps[si].element);
       if (!probeEl) continue;
-
-      // Method 1: Find stacking context ancestor and read its z-index
       var ancestor = findStackingAncestor(probeEl);
       if (ancestor) {
         var az = getEffectiveZIndex(ancestor);
         if (az > panelZIndex) panelZIndex = az;
       }
-
-      // Method 2: Walk the full chain for effective z-index
-      // (catches cases where the panel itself has z-index auto but
-      // a wrapper around it does not)
       var fullChainZ = getEffectiveZIndex(probeEl);
       if (fullChainZ > panelZIndex) panelZIndex = fullChainZ;
     }
 
-    // Method 3: If still 0, scan the page for the highest z-index
-    // among fixed/absolute positioned elements. This catches panels
-    // that exist but whose elements were not yet in our steps array.
     if (panelZIndex === 0) {
       var allElements = document.querySelectorAll('*');
       for (var fi = 0; fi < allElements.length; fi++) {
@@ -919,7 +918,6 @@
       zOverlay = panelZIndex + 1;
       zPopover = panelZIndex + 3;
     } else {
-      // Absolute fallback: extremely high values
       zOverlay = 2147483644;
       zPopover = 2147483646;
     }
@@ -993,10 +991,8 @@
       popoverManager.hide();
 
       var ts = {
-        activeIndex: idx,
-        totalSteps: steps.length,
-        isFirst: idx === 0,
-        isLast: idx === steps.length - 1,
+        activeIndex: idx, totalSteps: steps.length,
+        isFirst: idx === 0, isLast: idx === steps.length - 1,
       };
       var delay = configManager.getConfig('animate') ? 350 : 50;
       setTimeout(function () {
@@ -1061,6 +1057,7 @@
       emitter.destroy();
       var ds = as, de = ae;
       stateManager.resetState();
+      removeStyles();
       if (ds) safeHook(c.onDestroyed, de, ds, { config: c, state: {}, driver: api });
       if (fb && typeof fb.focus === 'function') { try { fb.focus(); } catch (e) { /* may be gone */ } }
     }
