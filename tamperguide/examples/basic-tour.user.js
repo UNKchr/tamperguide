@@ -7,7 +7,7 @@
 //               is launched on demand via the Tampermonkey extension menu.
 // @author       UNKchr
 // @match        *://*/*
-// @require      https://cdn.jsdelivr.net/gh/UNKchr/tamperguide@v1.4.1/tamperguide/tamperGuide.js
+// @require      https://cdn.jsdelivr.net/gh/UNKchr/tamperguide@v1.5.0/tamperguide/tamperGuide.js
 // @grant        GM_registerMenuCommand
 // @run-at       document-idle
 // @license      MIT

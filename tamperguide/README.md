@@ -929,6 +929,38 @@ Shows how to start a tour safely on a Single Page Application where elements may
 
 Demonstrates how to apply a custom theme to the popover using `popoverClass` and injected CSS, and how to add extra content (icons, links) to each popover with the `onPopoverRender` hook.
 
+### Themes (`examples/themes.user.js`)
+
+Demonstrates all four built-in visual themes (`default`, `dark`, `minimal`, `rounded`). Provides a separate menu command for each theme so they can be compared side by side. Also shows how to layer custom CSS overrides on top of a built-in theme using `popoverClass` and `GM_addStyle`.
+
+### Persistence (`examples/persistence.user.js`)
+
+Demonstrates tour progress persistence across page navigations. Shows how to configure `persist`, `persistKey`, `persistStorage`, and `persistExpiry`; how `drive()` resumes from the saved step on reload; how `isCompleted()` checks whether the tour was already finished; and how `resetProgress()` clears saved data. Includes a separate menu command to reset progress and commented-out examples showing GM storage with the required `@grant` directives.
+
+### Conditional Steps (`examples/conditional-steps.user.js`)
+
+Demonstrates the `when` property on step objects. Some steps are always shown; others are conditionally skipped based on live DOM state. Covers the fail-open guarantee (a throwing `when` function shows the step rather than crashing) and what happens when all remaining steps in the current direction return `false`.
+
+### waitFor & advanceOn (`examples/waitfor-advanceon.user.js`)
+
+Demonstrates both `waitFor` and `advanceOn` in a single self-contained tour with injected demo elements. Shows `waitFor` polling for a dynamically inserted element (simulated with a `setTimeout`), and `advanceOn` advancing the tour on a `click` and an `input` event. Covers timeout behaviour and automatic event-listener cleanup.
+
+### Hotspots (`examples/hotspots.user.js`)
+
+Demonstrates the hotspot system. Adds four hotspots with different configurations — default appearance, custom colour, `dismissOnClick`, and `autoDismiss` — via a single menu command. Provides separate menu commands for removing a specific hotspot and for removing all hotspots. Includes comments explaining hotspot behaviour in SPAs and on element removal.
+
+### Analytics (`examples/analytics.user.js`)
+
+Demonstrates the `onStepChange` and `onTourComplete` analytics hooks. Logs structured step-transition events including timing data and navigation direction. Distinguishes completed versus abandoned tours in `onTourComplete` and displays a per-step dwell-time breakdown in the browser console.
+
+### Accessibility (`examples/accessibility.user.js`)
+
+Demonstrates the built-in accessibility features. Uses custom `ariaLabel` values on steps to control screen reader announcements via the `aria-live` region. Includes detailed comments explaining focus trapping within the popover, the `aria-live="polite"` region lifecycle, and the ARIA attributes (`role`, `aria-modal`, `aria-label`) automatically applied to the popover and hotspot elements.
+
+### Step IDs & moveToStep (`examples/step-ids.user.js`)
+
+Demonstrates the `id` property on step objects and `guide.moveToStep()`. Assigns unique IDs to all steps and registers menu commands that call `moveToStep()` to jump directly to any step by name. Also demonstrates `getStepCount()` and explains how step IDs interact with persistence (IDs do not stabilise persisted indices across step reorders).
+
 ---
 
 ## Migration from v1.4.1
