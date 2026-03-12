@@ -765,7 +765,7 @@
   //   - Total duration of the tour session
   // =========================================================================
 
-  function createAnaliticsTracker(configManager) {
+  function createAnalyticsTracker(configManager) {
     var startTime = 0;
     var stepEnteredAt = 0;
     var visitedindexes = [];
