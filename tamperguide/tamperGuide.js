@@ -8,7 +8,7 @@
 // ==/UserScript==
 
 // ===========================================================================
-// TamperGuide v1.4.1
+// TamperGuide v1.5.0
 // ===========================================================================
 
 (function () {
@@ -39,11 +39,62 @@
     PERSISTENCE_ERROR: 'PERSISTENCE_ERROR',
     WAIT_TIMEOUT: 'WAIT_TIMEOUT',
     ADVANCE_ON_ERROR: 'ADVANCE_ON_ERROR',
-    HOSTSPOT_ERROR: 'HOSTSPOT_ERROR',
+    HOTSPOT_ERROR: 'HOTSPOT_ERROR',
   });
 
   function warn(code, message) {
     console.warn('[TamperGuide:' + code + '] ' + message);
+  }
+
+  function validateButtons(buttons, location) {
+    if (!Array.isArray(buttons)) {
+      throw new TamperGuideError(ErrorCodes.INVALID_CONFIG, '"buttons"' + (location ? ' in ' + location : '') + ' must be an Array.');
+    }
+    var validStrings = ['next', 'previous', 'close', 'done'];
+    var validVariants = ['primary', 'secondary', 'link', 'danger'];
+    for (var i = 0; i < buttons.length; i++) {
+      var btn = buttons[i];
+      if (typeof btn === 'string') {
+        if (validStrings.indexOf(btn) === -1) {
+          throw new TamperGuideError(ErrorCodes.INVALID_CONFIG,
+            'Unknown button identifier "' + btn + '"' + (location ? ' in ' + location : '') + ' at index ' + i + '. ' +
+            'Valid string identifiers: ' + validStrings.join(', ') + '. Or provide a custom button object: { text: "...", onClick: function() {} }');
+        }
+      } else if (btn !== null && typeof btn === 'object') {
+        if (btn.text === undefined || (typeof btn.text !== 'string' && typeof btn.text !== 'function') || (typeof btn.text === 'string' && btn.text.trim() === '')) {
+          throw new TamperGuideError(ErrorCodes.INVALID_CONFIG,
+            'Custom button at index ' + i + (location ? ' in ' + location : '') + ' must have a non-empty "text" string or function.');
+        }
+        if (btn.onClick !== undefined && typeof btn.onClick !== 'function') {
+          throw new TamperGuideError(ErrorCodes.INVALID_CONFIG,
+            '"onClick" for button "' + (typeof btn.text === 'string' ? btn.text : 'at index ' + i) + '"' + (location ? ' in ' + location : '') + ' must be a function.');
+        }
+        if (btn.variant !== undefined && (typeof btn.variant !== 'string' || validVariants.indexOf(btn.variant) === -1)) {
+          throw new TamperGuideError(ErrorCodes.INVALID_CONFIG,
+            '"variant" for button "' + (typeof btn.text === 'string' ? btn.text : 'at index ' + i) + '"' + (location ? ' in ' + location : '') + ' must be one of: ' + validVariants.join(', ') + '. Received: "' + btn.variant + '".');
+        }
+        if (btn.className !== undefined && typeof btn.className !== 'string') {
+          throw new TamperGuideError(ErrorCodes.INVALID_CONFIG,
+            '"className" for button at index ' + i + (location ? ' in ' + location : '') + ' must be a string.');
+        }
+        if (btn.id !== undefined && typeof btn.id !== 'string') {
+          throw new TamperGuideError(ErrorCodes.INVALID_CONFIG,
+            '"id" for button at index ' + i + (location ? ' in ' + location : '') + ' must be a string.');
+        }
+        if (btn.ariaLabel !== undefined && typeof btn.ariaLabel !== 'string') {
+          throw new TamperGuideError(ErrorCodes.INVALID_CONFIG,
+            '"ariaLabel" for button at index ' + i + (location ? ' in ' + location : '') + ' must be a string.');
+        }
+        if (btn.disabled !== undefined && typeof btn.disabled !== 'boolean' && typeof btn.disabled !== 'function') {
+          throw new TamperGuideError(ErrorCodes.INVALID_CONFIG,
+            '"disabled" for button at index ' + i + (location ? ' in ' + location : '') + ' must be a boolean or a function returning boolean.');
+        }
+      } else {
+        throw new TamperGuideError(ErrorCodes.INVALID_CONFIG,
+          'Invalid button definition at index ' + i + (location ? ' in ' + location : '') + '. ' +
+          'Expected a string (' + validStrings.join(', ') + ') or a button configuration object.');
+      }
+    }
   }
 
   function validateConfig(config) {
@@ -53,7 +104,7 @@
     var validKeys = [
       'steps', 'animate', 'overlayColor', 'overlayOpacity', 'stagePadding',
       'stageRadius', 'allowClose', 'allowKeyboardControl', 'showProgress',
-      'showButtons', 'progressText', 'nextBtnText', 'prevBtnText',
+      'showButtons', 'buttons', 'progressText', 'nextBtnText', 'prevBtnText',
       'doneBtnText', 'closeBtnText', 'popoverClass', 'popoverOffset',
       'smoothScroll', 'scrollIntoViewOptions', 'disableActiveInteraction',
       'allowBackdropInteraction',
@@ -95,6 +146,9 @@
           throw new TamperGuideError(ErrorCodes.INVALID_CONFIG, 'Unknown button: "' + config.showButtons[b] + '".');
         }
       }
+    }
+    if (config.buttons !== undefined) {
+      validateButtons(config.buttons, 'config');
     }
     var hookKeys = [
       'onHighlightStarted', 'onHighlighted', 'onDeselected',
@@ -182,6 +236,12 @@
       if (step.popover.align && ['start', 'center', 'end'].indexOf(step.popover.align) === -1) {
         throw new TamperGuideError(ErrorCodes.INVALID_STEP, 'Invalid align in step ' + index + '.');
       }
+      if (step.popover.buttons !== undefined) {
+        validateButtons(step.popover.buttons, 'step ' + index + ' popover');
+      }
+    }
+    if (step.buttons !== undefined) {
+      validateButtons(step.buttons, 'step ' + index);
     }
     if (!step.element && !step.popover) {
       throw new TamperGuideError(ErrorCodes.INVALID_STEP, 'Step ' + index + ' needs "element" or "popover".');
@@ -193,7 +253,7 @@
       }
     }
     if (step.when !== undefined && typeof step.when !== 'function') {
-      throw new TamperGuideError(ErrorCodes.INVALID_STEP, '"when" in step ' + index + ' must be a function that returns a boolean.' + 'When it returns false, the step is skipped during the tour. ' + 'Example: when: funtion()  { return document.querySelector("#panel") !== null; }');
+      throw new TamperGuideError(ErrorCodes.INVALID_STEP, '"when" in step ' + index + ' must be a function that returns a boolean.' + 'When it returns false, the step is skipped during the tour. ' + 'Example: when: function () { return document.querySelector("#panel") !== null; }');
     }
     if (step.waitFor !== undefined) {
       if (typeof step.waitFor !== 'object' || step.waitFor === null) {
@@ -257,7 +317,7 @@
   var DEFAULT_CONFIG = Object.freeze({
     steps: [], animate: true, overlayColor: '#000', overlayOpacity: 0.7,
     stagePadding: 10, stageRadius: 5, allowClose: true, allowKeyboardControl: true,
-    showProgress: false, showButtons: ['next', 'previous', 'close'],
+    showProgress: false, showButtons: ['next', 'previous', 'close'], buttons: undefined,
     progressText: '{{current}} of {{total}}',
     nextBtnText: 'Next &rarr;', prevBtnText: '&larr; Previous',
     doneBtnText: 'Done &#10003;', closeBtnText: '&times;',
@@ -418,10 +478,15 @@
       '}',
       '.tg-popover-btn:active { transform: scale(0.96); }',
       '.tg-popover-btn:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; }',
-      '.tg-popover-btn-prev { background: var(--tg-btn-secondary-bg, #f0f0f5); color: var(--tg-btn-secondary-color, #4a4a6a); }',
-      '.tg-popover-btn-prev:hover { background: var(--tg-btn-secondary-bg, #e0e0ea); filter: brightness(0.95); }',
-      '.tg-popover-btn-next, .tg-popover-btn-done { background: var(--tg-btn-primary-bg, #3b82f6); color: var(--tg-btn-primary-color, #fff); }',
-      '.tg-popover-btn-next:hover, .tg-popover-btn-done:hover { background: var(--tg-btn-primary-bg, #2563eb); filter: brightness(0.9); }',
+      '.tg-popover-btn-prev, .tg-popover-btn-secondary { background: var(--tg-btn-secondary-bg, #f0f0f5); color: var(--tg-btn-secondary-color, #4a4a6a); }',
+      '.tg-popover-btn-prev:hover:not(:disabled), .tg-popover-btn-secondary:hover:not(:disabled) { background: var(--tg-btn-secondary-bg, #e0e0ea); filter: brightness(0.95); }',
+      '.tg-popover-btn-next, .tg-popover-btn-done, .tg-popover-btn-primary { background: var(--tg-btn-primary-bg, #3b82f6); color: var(--tg-btn-primary-color, #fff); }',
+      '.tg-popover-btn-next:hover:not(:disabled), .tg-popover-btn-done:hover:not(:disabled), .tg-popover-btn-primary:hover:not(:disabled) { background: var(--tg-btn-primary-bg, #2563eb); filter: brightness(0.9); }',
+      '.tg-popover-btn-link { background: transparent; color: var(--tg-color, #4a4a6a); padding: 6px 8px; font-weight: 500; }',
+      '.tg-popover-btn-link:hover:not(:disabled) { text-decoration: underline; color: var(--tg-title-color, #0f0f23); }',
+      '.tg-popover-btn-danger { background: #ef4444; color: #ffffff; }',
+      '.tg-popover-btn-danger:hover:not(:disabled) { background: #dc2626; }',
+      '.tg-popover-btn:disabled, .tg-popover-btn[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; transform: none !important; }',
       '.tg-popover-btn-close {',
       '  position: absolute; top: 8px; right: 8px; background: transparent;',
       '  border: none; font-size: 18px; color: var(--tg-close-color, #aaa); cursor: pointer;',
@@ -765,10 +830,10 @@
   //   - Total duration of the tour session
   // =========================================================================
 
-  function createAnaliticsTracker(configManager) {
+  function createAnalyticsTracker(configManager) {
     var startTime = 0;
     var stepEnteredAt = 0;
-    var visitedindexes = [];
+    var visitedIndexes = [];
     var lastIndex = -1;
 
     /**
@@ -777,7 +842,7 @@
     function begin() {
       startTime = Date.now();
       stepEnteredAt = startTime;
-      visitedindexes = [];
+      visitedIndexes = [];
       lastIndex = -1;
     }
 
@@ -797,8 +862,8 @@
         else if (newIndex > lastIndex + 1) direction = 'jump';
       }
 
-      if (visitedindexes.indexOf(newIndex) === -1) {
-        visitedindexes.push(newIndex);
+      if (visitedIndexes.indexOf(newIndex) === -1) {
+        visitedIndexes.push(newIndex);
       }
 
       var totalSteps = (configManager.getConfig('steps') || []).length;
@@ -839,12 +904,12 @@
         allIndexes.push(i);
       }
       var skipped = allIndexes.filter(function (idx) {
-        return visitedindexes.indexOf(idx) === -1;
+        return visitedIndexes.indexOf(idx) === -1;
       });
 
       var summary = {
         completed: completed,
-        stepsVisited: visitedindexes.slice(),
+        stepsVisited: visitedIndexes.slice(),
         stepsSkipped: skipped,
         totalDuration: totalDuration,
         exitStep: exitIndex,
@@ -860,7 +925,7 @@
       // Reset for potential reuse of the same guide instance.
       startTime = 0;
       stepEnteredAt = 0;
-      visitedindexes = [];
+      visitedIndexes = [];
       lastIndex = -1;
     }
 
@@ -1015,13 +1080,28 @@
      *
      * @param {Element} popoverEl - The popover DOM element
      */
-    function setupFocusTrap(popoverEl) {
+    function setupFocusTrap(popoverEl, targetEl) {
       // Remove any existing trap before setting up a new one.
       releaseFocusTrap();
       if (!popoverEl) return;
 
       var focusableSelector = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
-      var focusable = popoverEl.querySelectorAll(focusableSelector);
+      var popoverFocusable = Array.prototype.slice.call(popoverEl.querySelectorAll(focusableSelector));
+
+      var targetFocusable = [];
+      if (targetEl && targetEl.nodeType === 1 && targetEl.id !== 'tg-dummy-element') {
+        if (typeof targetEl.matches === 'function' && targetEl.matches(focusableSelector)) {
+          targetFocusable.push(targetEl);
+        }
+        var innerFocusable = targetEl.querySelectorAll(focusableSelector);
+        for (var f = 0; f < innerFocusable.length; f++) {
+          if (targetFocusable.indexOf(innerFocusable[f]) === -1) {
+            targetFocusable.push(innerFocusable[f]);
+          }
+        }
+      }
+
+      var focusable = popoverFocusable.concat(targetFocusable);
       if (!focusable.length) return;
 
       var firstFocusable = focusable[0];
@@ -1034,15 +1114,18 @@
           e.preventDefault();
           return;
         }
+        var active = document.activeElement;
+        var activeIndex = focusable.indexOf(active);
+
         if (e.shiftKey) {
-          // Shift+Tab: if on first element, wrap to last
-          if (document.activeElement === firstFocusable) {
+          // Shift+Tab: if on first element (or outside list), wrap to last
+          if (active === firstFocusable || activeIndex <= 0) {
             e.preventDefault();
             lastFocusable.focus();
           }
         } else {
           // Tab: if on last element, wrap to first
-          if (document.activeElement === lastFocusable) {
+          if (active === lastFocusable || activeIndex === focusable.length - 1) {
             e.preventDefault();
             firstFocusable.focus();
           }
@@ -1050,13 +1133,22 @@
       }
 
       popoverEl.addEventListener('keydown', trapHandler);
+      if (targetEl && targetEl.addEventListener && targetEl !== popoverEl) {
+        targetEl.addEventListener('keydown', trapHandler);
+      }
+
       // Focus the first button so the user can immediately interact.
-      try { firstFocusable.focus(); }
+      var initialFocus = (popoverFocusable.length > 0) ? popoverFocusable[0] : firstFocusable;
+      try { initialFocus.focus(); }
       catch (e) { /* Element may not be focusable in some edge cases */ }
 
       // Store cleanup function so we can remove the trap later.
       trapCleanup = function () {
         popoverEl.removeEventListener('keydown', trapHandler);
+        if (targetEl && targetEl.removeEventListener && targetEl !== popoverEl) {
+          try { targetEl.removeEventListener('keydown', trapHandler); }
+          catch (e) { /* Best effort cleanup */ }
+        }
       };
     }
 
@@ -1800,12 +1892,14 @@
       document.body.appendChild(popoverEl);
     }
 
-    function render(step, targetElement, tourState) {
+    function render(step, targetElement, tourState, context) {
       tourState = tourState || {};
       create();
       currentStep = step;
       var popover = step.popover || {};
       var config = configManager.getConfig();
+      var ctx = context || { config: config, state: tourState, driver: null };
+
       var children = Array.from(popoverEl.children);
       for (var i = 0; i < children.length; i++) {
         if (children[i] !== arrowEl) children[i].remove();
@@ -1815,9 +1909,17 @@
       // [NEW v1.5.0] Re-apply theme on each render in case setConfig changed it.
       applyTheme(popoverEl, config.theme);
 
-      var showButtons = popover.showButtons || config.showButtons;
+      var buttonsList = popover.buttons || step.buttons || config.buttons;
+      var showButtons = popover.showButtons || config.showButtons || ['next', 'previous', 'close'];
 
-      if (showButtons.indexOf('close') !== -1 && config.allowClose) {
+      var shouldShowHeaderClose = false;
+      if (buttonsList) {
+        shouldShowHeaderClose = buttonsList.indexOf('close') !== -1 && config.allowClose;
+      } else {
+        shouldShowHeaderClose = showButtons.indexOf('close') !== -1 && config.allowClose;
+      }
+
+      if (shouldShowHeaderClose) {
         var closeBtn = document.createElement('button');
         closeBtn.classList.add('tg-popover-btn-close');
         closeBtn.innerHTML = config.closeBtnText;
@@ -1840,9 +1942,19 @@
         popoverEl.appendChild(descEl);
       }
 
-      var hasNav = showButtons.indexOf('next') !== -1 || showButtons.indexOf('previous') !== -1;
       var showProg = popover.showProgress !== undefined ? popover.showProgress : config.showProgress;
-      if (hasNav || showProg) {
+      var footerItems = [];
+      if (buttonsList) {
+        for (var bi = 0; bi < buttonsList.length; bi++) {
+          if (buttonsList[bi] === 'close') continue; // Handled in header
+          footerItems.push(buttonsList[bi]);
+        }
+      } else {
+        if (showButtons.indexOf('previous') !== -1) footerItems.push('previous');
+        if (showButtons.indexOf('next') !== -1) footerItems.push('next');
+      }
+
+      if (footerItems.length > 0 || showProg) {
         var footer = document.createElement('div');
         footer.classList.add('tg-popover-footer');
         if (showProg && tourState.totalSteps > 0) {
@@ -1855,24 +1967,73 @@
         }
         var btns = document.createElement('div');
         btns.classList.add('tg-popover-buttons');
-        if (showButtons.indexOf('previous') !== -1 && !tourState.isFirst) {
-          var pb = document.createElement('button');
-          pb.classList.add('tg-popover-btn', 'tg-popover-btn-prev');
-          pb.innerHTML = config.prevBtnText;
-          pb.setAttribute('type', 'button');
-          btns.appendChild(pb);
-        }
-        if (showButtons.indexOf('next') !== -1) {
-          var nb = document.createElement('button');
-          if (tourState.isLast) {
-            nb.classList.add('tg-popover-btn', 'tg-popover-btn-done');
-            nb.innerHTML = config.doneBtnText;
-          } else {
-            nb.classList.add('tg-popover-btn', 'tg-popover-btn-next');
-            nb.innerHTML = config.nextBtnText;
+
+        for (var fi = 0; fi < footerItems.length; fi++) {
+          var item = footerItems[fi];
+          if (item === 'previous') {
+            if (!tourState.isFirst) {
+              var pb = document.createElement('button');
+              pb.classList.add('tg-popover-btn', 'tg-popover-btn-prev', 'tg-popover-btn-secondary');
+              pb.innerHTML = config.prevBtnText;
+              pb.setAttribute('type', 'button');
+              btns.appendChild(pb);
+            }
+          } else if (item === 'next' || item === 'done') {
+            var nb = document.createElement('button');
+            if (tourState.isLast || item === 'done') {
+              nb.classList.add('tg-popover-btn', 'tg-popover-btn-done', 'tg-popover-btn-primary');
+              nb.innerHTML = config.doneBtnText;
+            } else {
+              nb.classList.add('tg-popover-btn', 'tg-popover-btn-next', 'tg-popover-btn-primary');
+              nb.innerHTML = config.nextBtnText;
+            }
+            nb.setAttribute('type', 'button');
+            btns.appendChild(nb);
+          } else if (typeof item === 'object' && item !== null) {
+            var cb = document.createElement('button');
+            cb.setAttribute('type', 'button');
+            cb.classList.add('tg-popover-btn');
+
+            var variant = item.variant || (item.role === 'primary' ? 'primary' : (item.role === 'danger' ? 'danger' : (item.role === 'link' ? 'link' : 'secondary')));
+            if (variant === 'primary') cb.classList.add('tg-popover-btn-primary');
+            else if (variant === 'link') cb.classList.add('tg-popover-btn-link');
+            else if (variant === 'danger') cb.classList.add('tg-popover-btn-danger');
+            else cb.classList.add('tg-popover-btn-secondary');
+
+            if (item.className) {
+              var customClasses = item.className.split(' ').filter(Boolean);
+              for (var ci = 0; ci < customClasses.length; ci++) cb.classList.add(customClasses[ci]);
+            }
+
+            if (item.id) cb.id = item.id;
+            if (item.ariaLabel) cb.setAttribute('aria-label', item.ariaLabel);
+
+            var btnText = typeof item.text === 'function' ? item.text(targetElement, step, ctx) : item.text;
+            cb.innerHTML = btnText || '';
+
+            var isDisabled = typeof item.disabled === 'function' ? item.disabled(targetElement, step, ctx) : item.disabled;
+            if (isDisabled) {
+              cb.disabled = true;
+              cb.setAttribute('aria-disabled', 'true');
+            }
+
+            if (typeof item.onClick === 'function') {
+              (function (handler, btnObj) {
+                cb.addEventListener('click', function (e) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (cb.disabled) return;
+                  try {
+                    handler(targetElement, step, ctx);
+                  } catch (err) {
+                    warn(ErrorCodes.HOOK_ERROR, 'Custom button onClick error: ' + err.message);
+                  }
+                });
+              })(item.onClick, item);
+            }
+
+            btns.appendChild(cb);
           }
-          nb.setAttribute('type', 'button');
-          btns.appendChild(nb);
         }
         footer.appendChild(btns);
         popoverEl.appendChild(footer);
@@ -1880,7 +2041,7 @@
 
       var hook = popover.onPopoverRender || config.onPopoverRender;
       if (hook) {
-        try { hook(popoverEl, { config: config, state: tourState }); }
+        try { hook(popoverEl, ctx); }
         catch (e) { warn(ErrorCodes.HOOK_ERROR, e.message); }
       }
 
@@ -2348,7 +2509,13 @@
         var delay = configManager.getConfig('animate') ? 350 : 50;
         setTimeout(function () {
           if (!stateManager.getState('isInitialized')) return;
-          if (step.popover) popoverManager.render(step, element, ts);
+          if (step.popover) {
+            popoverManager.render(step, element, ts, {
+              config: configManager.getConfig(),
+              state: stateManager.getState(),
+              driver: api,
+            });
+          }
 
           // [NEW v1.5.0] Set up accessibility: announce step and trap focus.
           var announcement = step.ariaLabel ||
@@ -2357,7 +2524,8 @@
           accessibilityManager.announce(announcement);
           var popoverEl = popoverManager.getElement();
           if (popoverEl) {
-            accessibilityManager.setupFocusTrap(popoverEl);
+            var interactiveTarget = configManager.getConfig('disableActiveInteraction') ? null : element;
+            accessibilityManager.setupFocusTrap(popoverEl, interactiveTarget);
           }
 
           // [NEW v1.5.0] Attach advanceOn listener if configured.
@@ -2577,7 +2745,11 @@
         var d = configManager.getConfig('animate') ? 350 : 50;
         setTimeout(function () {
           if (stateManager.getState('isInitialized') && step.popover) {
-            popoverManager.render(step, el, { activeIndex: 0, totalSteps: 0, isFirst: true, isLast: true });
+            popoverManager.render(step, el, { activeIndex: 0, totalSteps: 0, isFirst: true, isLast: true }, {
+              config: configManager.getConfig(),
+              state: stateManager.getState(),
+              driver: api,
+            });
           }
         }, d);
       },

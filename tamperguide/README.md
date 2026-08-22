@@ -30,22 +30,23 @@ Inspired by [driver.js](https://driverjs.com), designed specifically for the use
 3. [Highlight a Single Element](#highlight-a-single-element)
 4. [Configuration Options](#configuration-options)
 5. [Step Object](#step-object)
-6. [Themes](#themes)
-7. [Persistence](#persistence)
-8. [Conditional Steps](#conditional-steps)
-9. [Waiting for Elements](#waiting-for-elements)
-10. [Advance on Interaction](#advance-on-interaction)
-11. [Hotspots](#hotspots)
-12. [Analytics](#analytics)
-13. [Auto-Refresh](#auto-refresh)
-14. [Accessibility](#accessibility)
-15. [Hooks](#hooks)
-16. [API Reference](#api-reference)
-17. [Keyboard Shortcuts](#keyboard-shortcuts)
-18. [Error Handling](#error-handling)
-19. [Examples](#examples)
-20. [Migration from v1.4.1](#migration-from-v141)
-21. [License](#license)
+6. [Custom Buttons](#custom-buttons)
+7. [Themes](#themes)
+8. [Persistence](#persistence)
+9. [Conditional Steps](#conditional-steps)
+10. [Waiting for Elements](#waiting-for-elements)
+11. [Advance on Interaction](#advance-on-interaction)
+12. [Hotspots](#hotspots)
+13. [Analytics](#analytics)
+14. [Auto-Refresh](#auto-refresh)
+15. [Accessibility](#accessibility)
+16. [Hooks](#hooks)
+17. [API Reference](#api-reference)
+18. [Keyboard Shortcuts](#keyboard-shortcuts)
+19. [Error Handling](#error-handling)
+20. [Examples](#examples)
+21. [Migration from v1.4.1](#migration-from-v141)
+22. [License](#license)
 
 ---
 
@@ -196,6 +197,7 @@ All options are passed to the `tamperGuide(options)` factory function. Every opt
 
 | Option | Type | Default | Description |
 |---|---|---|---|
+| `buttons` | `Array<string \| object>` | `undefined` | Array of button definitions in the exact order they should render. Mix string identifiers (`'next'`, `'previous'`, `'close'`) and custom button objects (`{ text, onClick, variant, ... }`). Takes precedence over `showButtons`. See the [Custom Buttons](#custom-buttons) section. |
 | `showButtons` | `Array<string>` | `['next', 'previous', 'close']` | Controls which buttons are rendered inside the popover. Valid values: `'next'`, `'previous'`, `'close'`. Pass an empty array to hide all buttons. |
 | `nextBtnText` | `string` | `'Next &rarr;'` | Label for the "Next" button. Supports HTML entities. |
 | `prevBtnText` | `string` | `'&larr; Previous'` | Label for the "Previous" button. Supports HTML entities. |
@@ -353,6 +355,57 @@ Each entry in the `steps` array is a plain object with the following shape:
 ```
 
 A step must have at least one of `element` or `popover`. Steps with neither are rejected at configuration time with a `TamperGuideError`.
+
+---
+
+## Custom Buttons
+
+TamperGuide supports custom action buttons both globally in `tamperGuide({ buttons: [...] })` and per-step inside `popover: { buttons: [...] }`.
+
+The `buttons` array lets you mix built-in button identifiers with custom button objects in any desired order:
+
+```js
+const guide = tamperGuide({
+  buttons: [
+    {
+      text: 'Skip',
+      variant: 'link', // 'primary' | 'secondary' | 'link' | 'danger'
+      onClick: function (element, step, context) {
+        context.driver.destroy();
+      },
+    },
+    'previous',
+    'next',
+  ],
+  steps: [ /* ... */ ],
+});
+```
+
+### Custom Button Object Properties
+
+| Property | Type | Default | Description |
+|---|---|---|---|
+| `text` | `string \| function` | *(Required)* | Button label text or HTML. Supports dynamic resolver functions `function(element, step, context)`. |
+| `onClick` | `function` | `undefined` | Callback invoked when the button is clicked. Receives `(element, step, context)`. |
+| `variant` | `string` | `'secondary'` | Visual style: `'primary'`, `'secondary'`, `'link'`, or `'danger'`. |
+| `className` | `string` | `''` | Space-separated CSS class names for custom styling. |
+| `id` | `string` | `''` | DOM `id` attribute for the button. |
+| `ariaLabel` | `string` | `''` | Accessible label for screen readers (`aria-label`). |
+| `disabled` | `boolean \| function` | `false` | Disables the button when `true` or when the function returns `true`. |
+
+### Callback Context Object
+
+The `onClick` handler receives three arguments:
+
+```js
+onClick: function (element, step, context) {
+  // element: DOM Element currently highlighted (or null for centered steps)
+  // step: Current step configuration object
+  // context.driver: TamperGuide API instance (drive, moveToStep, destroy, etc.)
+  // context.config: Full resolved configuration object
+  // context.state: Internal tour state snapshot
+}
+```
 
 ---
 
@@ -961,6 +1014,10 @@ Demonstrates the built-in accessibility features. Uses custom `ariaLabel` values
 
 Demonstrates the `id` property on step objects and `guide.moveToStep()`. Assigns unique IDs to all steps and registers menu commands that call `moveToStep()` to jump directly to any step by name. Also demonstrates `getStepCount()` and explains how step IDs interact with persistence (IDs do not stabilise persisted indices across step reorders).
 
+### Custom Buttons (`examples/custom-buttons.user.js`)
+
+Demonstrates custom action buttons both globally and per-step. Shows how to mix built-in button identifiers with custom button objects, trigger custom callbacks, apply visual style variants (`primary`, `secondary`, `link`, `danger`), control disabled states, and navigate steps programmatically.
+
 ---
 
 ## Migration from v1.4.1
@@ -978,6 +1035,7 @@ To upgrade, change the version tag in your `@require` URL:
 
 | Feature | Configuration | Description |
 |---|---|---|
+| Custom Buttons | `buttons` (global / per-step) | Arbitrary buttons with custom callbacks, styling variants, and full API control. |
 | Built-in Themes | `theme` | Four visual themes applied via CSS custom properties. |
 | Persistence | `persist`, `persistKey`, `persistStorage`, `persistExpiry` | Save and resume tour progress across page navigations. |
 | Conditional Steps | `when` (per-step) | Skip steps declaratively based on runtime conditions. |
