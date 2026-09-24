@@ -68,8 +68,6 @@ TamperGuide is used as a `@require` library inside your userscript header. Choos
 // @require https://update.greasyfork.org/scripts/XXXXXX/tamperGuide.js
 ```
 
-> Replace `XXXXXX` with the actual Greasy Fork script ID after publishing.
-
 ### Option C: GitHub Raw
 
 ```js
