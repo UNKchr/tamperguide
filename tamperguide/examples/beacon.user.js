@@ -72,11 +72,11 @@
   }
 
   // --------------------------------------------------------------------------
-  // Example 1: Guided Tour with Step Beacons & advanceOn
+  // Example 1: Guided Tour with Step Beacons & Optional Text Pills
   // --------------------------------------------------------------------------
   // The beacon visual guide pairs naturally with `advanceOn: { event: 'click' }`.
-  // The continuous cascading waves draw the user's eye to the exact button,
-  // and clicking it advances the tour to the next step.
+  // The continuous cascading waves draw the eye, while optional text pills
+  // explain what to click without cluttering the screen with full popovers.
   function startBeaconTour() {
     injectDemoBar();
 
@@ -87,51 +87,76 @@
         {
           element: '#tg-demo-save',
           popover: {
-            title: 'Adaptive Rectangular Beacon',
-            description: 'Notice how the amber ripple emanates directly from the rectangular button outline. Click the button to continue!',
+            title: 'String Shortcut Beacon Label',
+            description: 'Passing a simple string to "beacon" shows both the adaptive ripple and an elegant dark pill.',
             side: 'top',
           },
-          // Simple boolean enables the beacon with default adaptive shape & amber color
-          beacon: true,
-          // Advances to step 2 when the button is clicked
+          // String shortcut: shows ripple + default dark pill with text
+          beacon: 'Click to save draft',
           advanceOn: { event: 'click' },
         },
         {
           element: '#tg-demo-pill',
           popover: {
-            title: 'Adaptive Pill Shape Beacon',
-            description: 'The beacon inspects computed border-radius: 9999px and matches the pill shape smoothly in emerald green.',
+            title: 'Adaptive Pill with Accent Theme',
+            description: 'Uses theme: "accent" to match the beacon color, complete with an emoji prefix icon.',
             side: 'top',
           },
-          // Customized beacon: shape, color, speed, and border thickness
+          // Detailed beacon with accent theme matching emerald color
           beacon: {
             shape: 'adaptive',
             color: 'green',        // Preset color name
-            borderWidth: 3,        // 3px wave thickness
-            speed: 1.8,            // 1.8s ripple cycle
-            dismissOnClick: true,  // Auto-dismiss on click
+            borderWidth: 3,
+            speed: 1.8,
+            dismissOnClick: true,
+            text: {
+              content: 'Ready to publish',
+              theme: 'accent',     // Adopts emerald green background
+              icon: '🚀',
+              position: 'top',
+            },
           },
           advanceOn: { event: 'click' },
         },
         {
           element: '#tg-demo-icon',
           popover: {
-            title: 'Circular Radar Pulse',
-            description: 'Using shape: "circle" (or "radar") generates concentric circular waves from the center of icons or circular buttons.',
+            title: 'Radar Pulse with Light Theme Pill',
+            description: 'Concentric circular waves centered on the icon, paired with a clean white/light pill placed at the bottom.',
             side: 'top',
           },
           beacon: {
             shape: 'circle',
-            color: '#a855f7',      // Purple hex
+            color: '#a855f7',
             borderWidth: 3,
             speed: 1.5,
+            text: {
+              content: 'Starred favorites',
+              theme: 'light',      // Clean white card style
+              icon: '⭐',
+              position: 'bottom',  // Placed below element
+            },
+          },
+          advanceOn: { event: 'click' },
+        },
+        {
+          element: '#tg-demo-save',
+          popover: {
+            title: 'Wave-Only Beacon',
+            description: 'Text labels are completely optional! Here is a clean wave-only beacon without any text pill.',
+            side: 'top',
+          },
+          // Pure wave beacon without text
+          beacon: {
+            shape: 'adaptive',
+            color: 'blue',
           },
           advanceOn: { event: 'click' },
         },
         {
           popover: {
             title: 'Tour Finished!',
-            description: 'You experienced all beacon modes: adaptive rectangular, adaptive pill, and circular radar waves.',
+            description: 'You experienced all beacon modes: wave-only, dark pill, accent pill, and light theme with icons.',
           },
         },
       ],
@@ -152,30 +177,55 @@
     return standaloneGuide;
   }
 
-  function showAdaptiveBeacon() {
+  function showPillBeacon() {
     injectDemoBar();
     var g = ensureStandaloneGuide();
-    // Non-blocking: user can still interact with the page normally
+    // Dark pill with emoji icon
     g.showBeacon('#tg-demo-save', {
       shape: 'adaptive',
       color: 'blue',
       speed: 2,
       dismissOnClick: true,
+      text: {
+        content: 'Save draft now',
+        theme: 'dark',
+        icon: '💾',
+        position: 'top',
+      },
     });
-    console.log('[Beacon Demo] Standalone adaptive beacon shown on #tg-demo-save.');
+    console.log('[Beacon Demo] Standalone pill beacon shown on #tg-demo-save.');
   }
 
-  function showRadarBeacon() {
+  function showLightPillBeacon() {
     injectDemoBar();
     var g = ensureStandaloneGuide();
+    // Light pill placed on bottom
     g.showBeacon('#tg-demo-icon', {
       shape: 'circle',
       color: 'amber',
       borderWidth: 3,
       speed: 1.6,
       dismissOnClick: true,
+      text: {
+        content: 'Quick action',
+        theme: 'light',
+        position: 'bottom',
+        icon: '⚡',
+      },
     });
-    console.log('[Beacon Demo] Standalone radar beacon shown on #tg-demo-icon.');
+    console.log('[Beacon Demo] Standalone light pill beacon shown on #tg-demo-icon.');
+  }
+
+  function showWaveOnlyBeacon() {
+    injectDemoBar();
+    var g = ensureStandaloneGuide();
+    // Wave only, no text
+    g.showBeacon('#tg-demo-pill', {
+      shape: 'adaptive',
+      color: 'green',
+      dismissOnClick: true,
+    });
+    console.log('[Beacon Demo] Standalone wave-only beacon shown on #tg-demo-pill.');
   }
 
   function hideBeacon() {
@@ -189,9 +239,10 @@
   // Register Tampermonkey Menu Commands
   // --------------------------------------------------------------------------
   if (typeof GM_registerMenuCommand === 'function') {
-    GM_registerMenuCommand('TamperGuide: Start Beacon Tour', startBeaconTour);
-    GM_registerMenuCommand('TamperGuide: Show Adaptive Beacon (Button)', showAdaptiveBeacon);
-    GM_registerMenuCommand('TamperGuide: Show Radar Beacon (Icon)', showRadarBeacon);
+    GM_registerMenuCommand('TamperGuide: Start Beacon Tour (with Text Pills)', startBeaconTour);
+    GM_registerMenuCommand('TamperGuide: Show Dark Pill Beacon', showPillBeacon);
+    GM_registerMenuCommand('TamperGuide: Show Light Pill Beacon', showLightPillBeacon);
+    GM_registerMenuCommand('TamperGuide: Show Wave-Only Beacon', showWaveOnlyBeacon);
     GM_registerMenuCommand('TamperGuide: Hide Active Beacon', hideBeacon);
   }
 

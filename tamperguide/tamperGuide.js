@@ -211,6 +211,11 @@
           'Values below 50ms can cause excessive repaints and degrade performance.');
       }
     }
+    if (config.beacon !== undefined) {
+      if (typeof config.beacon !== 'boolean' && typeof config.beacon !== 'string' && (typeof config.beacon !== 'object' || config.beacon === null)) {
+        throw new TamperGuideError(ErrorCodes.INVALID_CONFIG, '"beacon" in config must be a boolean, string, or an options object.');
+      }
+    }
   }
 
   function validateStep(step, index) {
@@ -281,9 +286,12 @@
       throw new TamperGuideError(ErrorCodes.INVALID_STEP, '"ariaLabel" in step ' + index + ' must be a string for screen reader announcements.');
     }
     if (step.beacon !== undefined) {
-      if (typeof step.beacon !== 'boolean' && (typeof step.beacon !== 'object' || step.beacon === null)) {
-        throw new TamperGuideError(ErrorCodes.INVALID_STEP, '"beacon" in step ' + index + ' must be a boolean or an options object. ' +
-          'Example: beacon: { shape: "adaptive", color: "#f59e0b" }');
+      if (typeof step.beacon !== 'boolean' && typeof step.beacon !== 'string' && (typeof step.beacon !== 'object' || step.beacon === null)) {
+        throw new TamperGuideError(ErrorCodes.INVALID_STEP, '"beacon" in step ' + index + ' must be a boolean, string, or an options object. ' +
+          'Example: beacon: { shape: "adaptive", color: "#f59e0b", text: "Click here" }');
+      }
+      if (typeof step.beacon === 'string' && step.beacon.trim() === '') {
+        throw new TamperGuideError(ErrorCodes.INVALID_STEP, '"beacon" in step ' + index + ' cannot be an empty string.');
       }
       if (typeof step.beacon === 'object') {
         var validShapes = ['adaptive', 'circle', 'radar'];
@@ -301,6 +309,39 @@
         }
         if (step.beacon.dismissOnClick !== undefined && typeof step.beacon.dismissOnClick !== 'boolean') {
           throw new TamperGuideError(ErrorCodes.INVALID_STEP, '"beacon.dismissOnClick" in step ' + index + ' must be a boolean.');
+        }
+        if (step.beacon.text !== undefined) {
+          if (typeof step.beacon.text !== 'string' && (typeof step.beacon.text !== 'object' || step.beacon.text === null)) {
+            throw new TamperGuideError(ErrorCodes.INVALID_STEP, '"beacon.text" in step ' + index + ' must be a string or an options object.');
+          }
+          if (typeof step.beacon.text === 'string' && step.beacon.text.trim() === '') {
+            throw new TamperGuideError(ErrorCodes.INVALID_STEP, '"beacon.text" in step ' + index + ' cannot be an empty string.');
+          }
+          if (typeof step.beacon.text === 'object') {
+            if (typeof step.beacon.text.content !== 'string' || step.beacon.text.content.trim() === '') {
+              throw new TamperGuideError(ErrorCodes.INVALID_STEP, '"beacon.text.content" in step ' + index + ' must be a non-empty string.');
+            }
+            var validPositions = ['top', 'bottom', 'left', 'right', 'auto'];
+            if (step.beacon.text.position !== undefined && validPositions.indexOf(step.beacon.text.position) === -1) {
+              throw new TamperGuideError(ErrorCodes.INVALID_STEP, '"beacon.text.position" in step ' + index + ' must be one of: ' + validPositions.join(', ') + '. Received: "' + step.beacon.text.position + '".');
+            }
+            var validThemes = ['dark', 'light', 'accent'];
+            if (step.beacon.text.theme !== undefined && validThemes.indexOf(step.beacon.text.theme) === -1) {
+              throw new TamperGuideError(ErrorCodes.INVALID_STEP, '"beacon.text.theme" in step ' + index + ' must be one of: ' + validThemes.join(', ') + '. Received: "' + step.beacon.text.theme + '".');
+            }
+            if (step.beacon.text.icon !== undefined && typeof step.beacon.text.icon !== 'string') {
+              throw new TamperGuideError(ErrorCodes.INVALID_STEP, '"beacon.text.icon" in step ' + index + ' must be a string.');
+            }
+            if (step.beacon.text.className !== undefined && typeof step.beacon.text.className !== 'string') {
+              throw new TamperGuideError(ErrorCodes.INVALID_STEP, '"beacon.text.className" in step ' + index + ' must be a string.');
+            }
+            if (step.beacon.text.background !== undefined && typeof step.beacon.text.background !== 'string') {
+              throw new TamperGuideError(ErrorCodes.INVALID_STEP, '"beacon.text.background" in step ' + index + ' must be a CSS color string.');
+            }
+            if (step.beacon.text.color !== undefined && typeof step.beacon.text.color !== 'string') {
+              throw new TamperGuideError(ErrorCodes.INVALID_STEP, '"beacon.text.color" in step ' + index + ' must be a CSS color string.');
+            }
+          }
         }
       }
     }
@@ -554,6 +595,33 @@
       '.tg-beacon-circle .tg-beacon-wave { left: 50%; top: 50%; width: 50px; height: 50px; border-radius: 50%; }',
       '.tg-beacon-circle .tg-beacon-wave-1 { animation: tg-beacon-ripple-circle var(--tg-beacon-speed, 2s) cubic-bezier(0, 0.2, 0.8, 1) infinite; }',
       '.tg-beacon-circle .tg-beacon-wave-2 { animation: tg-beacon-ripple-circle var(--tg-beacon-speed, 2s) cubic-bezier(0, 0.2, 0.8, 1) infinite; animation-delay: calc(var(--tg-beacon-speed, 2s) / -2); }',
+      '',
+      '@keyframes tg-beacon-label-in {',
+      '  from { opacity: 0; transform: translateY(3px) scale(0.96); }',
+      '  to { opacity: 1; transform: translateY(0) scale(1); }',
+      '}',
+      '.tg-beacon-label {',
+      '  position: absolute; display: inline-flex; align-items: center; gap: 6px;',
+      '  white-space: nowrap; padding: 6px 12px; font-size: 12px; font-weight: 500;',
+      '  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;',
+      '  border-radius: 9999px; pointer-events: none; z-index: 2;',
+      '  box-shadow: 0 4px 14px rgba(0,0,0,0.22); line-height: 1.3;',
+      '  animation: tg-beacon-label-in 0.22s cubic-bezier(0.16, 1, 0.3, 1); will-change: transform, opacity;',
+      '}',
+      '.tg-beacon-label-top { bottom: calc(100% + 9px); left: 50%; transform: translateX(-50%); }',
+      '.tg-beacon-label-bottom { top: calc(100% + 9px); left: 50%; transform: translateX(-50%); }',
+      '.tg-beacon-label-left { right: calc(100% + 9px); top: 50%; transform: translateY(-50%); }',
+      '.tg-beacon-label-right { left: calc(100% + 9px); top: 50%; transform: translateY(-50%); }',
+      '.tg-beacon-label-arrow { position: absolute; width: 0; height: 0; border-style: solid; pointer-events: none; }',
+      '.tg-beacon-label-top .tg-beacon-label-arrow { bottom: -5px; left: 50%; transform: translateX(-50%); border-width: 5px 5px 0 5px; border-color: inherit transparent transparent transparent; }',
+      '.tg-beacon-label-bottom .tg-beacon-label-arrow { top: -5px; left: 50%; transform: translateX(-50%); border-width: 0 5px 5px 5px; border-color: transparent transparent inherit transparent; }',
+      '.tg-beacon-label-left .tg-beacon-label-arrow { right: -5px; top: 50%; transform: translateY(-50%); border-width: 5px 0 5px 5px; border-color: transparent transparent transparent inherit; }',
+      '.tg-beacon-label-right .tg-beacon-label-arrow { left: -5px; top: 50%; transform: translateY(-50%); border-width: 5px 5px 5px 0; border-color: transparent inherit transparent transparent; }',
+      '.tg-beacon-label-theme-dark { background: rgba(15, 23, 42, 0.94); color: #f8fafc; border-color: rgba(15, 23, 42, 0.94); }',
+      '.tg-beacon-label-theme-light { background: #ffffff; color: #0f172a; border-color: #ffffff; box-shadow: 0 4px 14px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.08); }',
+      '.tg-beacon-label-theme-accent { background: var(--tg-beacon-color, #f59e0b); color: #ffffff; border-color: var(--tg-beacon-color, #f59e0b); }',
+      '.tg-beacon-label-icon { display: inline-flex; align-items: center; line-height: 1; font-size: 13px; }',
+      '.tg-beacon-label-text { display: inline-block; line-height: 1.3; }',
       '',
       '.tg-live-region { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }',
     ].join('\n');
@@ -1855,8 +1923,10 @@
 
   function createBeaconManager(zPopover) {
     var beaconEl = null;
+    var labelEl = null;
     var currentTarget = null;
     var currentOptions = null;
+    var textConfig = null;
     var clickHandler = null;
     var resizeHandler = null;
 
@@ -1888,8 +1958,10 @@
         beaconEl.remove();
       }
       beaconEl = null;
+      labelEl = null;
       currentTarget = null;
       currentOptions = null;
+      textConfig = null;
       if (resizeHandler) {
         window.removeEventListener('resize', resizeHandler);
         window.removeEventListener('scroll', resizeHandler);
@@ -1935,6 +2007,30 @@
           beaconEl.style.borderRadius = '4px';
         }
       }
+
+      // Dynamic viewport collision and position update for label
+      if (labelEl && textConfig) {
+        var prefPos = textConfig.position || 'top';
+        var actualPos = prefPos;
+        if (prefPos === 'top' || prefPos === 'auto') {
+          // If close to top of viewport, flip to bottom
+          if (rect.top < 55) {
+            actualPos = 'bottom';
+          } else {
+            actualPos = 'top';
+          }
+        } else if (prefPos === 'bottom') {
+          var vh = window.innerHeight || document.documentElement.clientHeight || 800;
+          if (rect.bottom + 55 > vh && rect.top > 55) {
+            actualPos = 'top';
+          }
+        }
+        var posClasses = ['tg-beacon-label-top', 'tg-beacon-label-bottom', 'tg-beacon-label-left', 'tg-beacon-label-right', 'tg-beacon-label-auto'];
+        for (var pi = 0; pi < posClasses.length; pi++) {
+          labelEl.classList.remove(posClasses[pi]);
+        }
+        labelEl.classList.add('tg-beacon-label-' + actualPos);
+      }
     }
 
     function show(target, options) {
@@ -1947,9 +2043,20 @@
         return;
       }
 
+      if (typeof options === 'string') {
+        options = { text: options };
+      }
       var opts = (typeof options === 'object' && options !== null) ? options : {};
       currentTarget = el;
       currentOptions = opts;
+
+      // Normalize text configuration
+      textConfig = null;
+      if (typeof opts.text === 'string' && opts.text.trim()) {
+        textConfig = { content: opts.text.trim() };
+      } else if (typeof opts.text === 'object' && opts.text !== null && typeof opts.text.content === 'string' && opts.text.content.trim()) {
+        textConfig = opts.text;
+      }
 
       var shape = (opts.shape === 'circle' || opts.shape === 'radar') ? 'circle' : 'adaptive';
       var color = resolveColor(opts.color);
@@ -1969,6 +2076,47 @@
 
       beaconEl.appendChild(wave1);
       beaconEl.appendChild(wave2);
+
+      // Create optional label if text is configured
+      if (textConfig) {
+        labelEl = document.createElement('div');
+        var theme = textConfig.theme || 'dark';
+        var pos = textConfig.position || 'top';
+        labelEl.className = 'tg-beacon-label tg-beacon-label-' + pos + ' tg-beacon-label-theme-' + theme;
+
+        if (textConfig.className) {
+          var customClasses = textConfig.className.split(/\s+/).filter(Boolean);
+          for (var ci = 0; ci < customClasses.length; ci++) {
+            labelEl.classList.add(customClasses[ci]);
+          }
+        }
+        if (textConfig.background) {
+          labelEl.style.backgroundColor = textConfig.background;
+          labelEl.style.borderColor = textConfig.background;
+        }
+        if (textConfig.color) {
+          labelEl.style.color = textConfig.color;
+        }
+
+        if (textConfig.icon) {
+          var iconSpan = document.createElement('span');
+          iconSpan.className = 'tg-beacon-label-icon';
+          iconSpan.textContent = textConfig.icon;
+          labelEl.appendChild(iconSpan);
+        }
+
+        var textSpan = document.createElement('span');
+        textSpan.className = 'tg-beacon-label-text';
+        textSpan.textContent = textConfig.content;
+        labelEl.appendChild(textSpan);
+
+        var arrowSpan = document.createElement('span');
+        arrowSpan.className = 'tg-beacon-label-arrow';
+        labelEl.appendChild(arrowSpan);
+
+        beaconEl.appendChild(labelEl);
+      }
+
       document.body.appendChild(beaconEl);
 
       position();
@@ -2001,12 +2149,17 @@
       return beaconEl;
     }
 
+    function getLabelElement() {
+      return labelEl;
+    }
+
     return {
       show: show,
       hide: hide,
       reposition: reposition,
       destroy: destroy,
       getElement: getElement,
+      getLabelElement: getLabelElement,
     };
   }
 
@@ -2902,7 +3055,7 @@
           // [NEW v1.6.0] Attach click indicator / beacon if configured.
           var beaconOpt = (step.beacon !== undefined) ? step.beacon : configManager.getConfig('beacon');
           if (beaconOpt && element) {
-            var beaconConfig = (typeof beaconOpt === 'object' && beaconOpt !== null) ? beaconOpt : {};
+            var beaconConfig = (typeof beaconOpt === 'object' && beaconOpt !== null) ? beaconOpt : (typeof beaconOpt === 'string' ? { text: beaconOpt } : {});
             beaconManager.show(element, beaconConfig);
           }
 
@@ -3129,7 +3282,7 @@
             });
           }
           if (stateManager.getState('isInitialized') && step.beacon && el) {
-            var bOpt = (typeof step.beacon === 'object' && step.beacon !== null) ? step.beacon : {};
+            var bOpt = (typeof step.beacon === 'object' && step.beacon !== null) ? step.beacon : (typeof step.beacon === 'string' ? { text: step.beacon } : {});
             beaconManager.show(el, bOpt);
           }
         }, d);

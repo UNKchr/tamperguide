@@ -686,35 +686,54 @@ The **Click Indicator / Beacon** displays an animated, non-blocking visual promp
 
 ### Using Beacons in Tours
 
-You can enable a beacon on any tour step using `beacon: true` (which uses default adaptive shape and amber color) or an options object:
+You can enable a beacon on any tour step using `beacon: true` (waves only), a string shortcut (e.g. `beacon: 'Click here'`), or a detailed configuration object:
 
 ```js
 const guide = tamperGuide({
   steps: [
     {
-      element: '#download-btn',
+      element: '#save-draft-btn',
       popover: {
-        title: 'Download Update',
-        description: 'Click this button to start downloading the files.',
+        title: 'Save Draft',
+        description: 'Save your work before navigating away.',
       },
-      // Simple boolean: adaptive shape, default amber color
+      // Simple boolean: waves only (adaptive contour, default amber color)
       beacon: true,
-      // Automatically advance tour when user clicks the button
+      advanceOn: { event: 'click' },
+    },
+    {
+      element: '#download-btn',
+      // String shortcut: automatically displays waves + dark pill with text
+      beacon: 'Click to start download',
+      advanceOn: { event: 'click' },
+    },
+    {
+      element: '#publish-btn',
+      // Detailed beacon with custom text, theme, and icon
+      beacon: {
+        shape: 'adaptive',
+        color: 'green',
+        text: {
+          content: 'Ready to publish!',
+          theme: 'accent',        // Matches beacon color (emerald green)
+          position: 'top',        // 'top' | 'bottom' | 'left' | 'right' | 'auto'
+          icon: '🚀',             // Optional prefix icon or emoji
+        },
+        dismissOnClick: true,
+      },
       advanceOn: { event: 'click' },
     },
     {
       element: '#settings-icon',
-      popover: {
-        title: 'Preferences',
-        description: 'Click the gear icon to configure options.',
-      },
-      // Detailed beacon customization
+      // Circular radar pulse with light-themed pill
       beacon: {
-        shape: 'circle',         // 'circle' or 'adaptive'
-        color: 'green',          // preset name or CSS hex/rgb
-        borderWidth: 3,          // ripple thickness in px
-        speed: 1.8,              // ripple cycle duration in seconds
-        dismissOnClick: true,    // auto-remove on click
+        shape: 'circle',
+        color: 'purple',
+        text: {
+          content: 'Configure preferences',
+          theme: 'light',
+          position: 'bottom',
+        },
       },
     },
   ],
@@ -723,6 +742,22 @@ const guide = tamperGuide({
 guide.drive();
 ```
 
+### Optional Text Labels (Callout Pill / Badge)
+
+Showing a text label with the beacon is completely **optional**. When omitted, only the continuous concentric waves are rendered. When included, a floating pill with a directional arrow is attached to the element.
+
+#### Predefined Themes
+
+| Theme | Default | Description |
+|---|---|---|
+| `'dark'` | ✅ Yes | Deep slate background (`rgba(15, 23, 42, 0.94)`), white text, subtle shadow, and dark pointer arrow. Modern and high contrast. |
+| `'light'` | No | Clean white background (`#ffffff`), dark text (`#0f172a`), 1px subtle border, and white pointer arrow. |
+| `'accent'` | No | Matches the beacon's active color (`--tg-beacon-color`), with crisp white text and matching colored arrow. |
+
+#### Viewport Collision & Auto-Flipping
+
+If a label is positioned at `'top'` (or `'auto'`) and the target element is close to the top of the browser viewport (`rect.top < 55px`), TamperGuide automatically flips the label to `'bottom'` so it is never clipped outside the visible screen.
+
 ### Standalone API (`showBeacon` and `hideBeacon`)
 
 Beacons can also be used independently of a guided tour, for example as contextual hints in your userscript:
@@ -730,17 +765,26 @@ Beacons can also be used independently of a guided tour, for example as contextu
 ```js
 const guide = tamperGuide();
 
-// Show an adaptive ripple on a button
+// 1. Simple wave-only beacon
 guide.showBeacon('#submit-form', {
   shape: 'adaptive',
-  color: '#3b82f6', // blue
-  speed: 2,
+  color: '#3b82f6',
 });
 
-// Or show a circular radar pulse on an icon
+// 2. Beacon with string shortcut text
+guide.showBeacon('#save-btn', 'Click here to save');
+
+// 3. Fully customized beacon with text and custom styling
 guide.showBeacon('#help-icon', {
   shape: 'circle',
-  color: 'purple',
+  color: 'amber',
+  text: {
+    content: 'Need help? Click here',
+    theme: 'dark',
+    position: 'bottom',
+    icon: '💡',
+    className: 'my-custom-pill',
+  },
 });
 
 // Manually hide any active beacon
@@ -756,6 +800,19 @@ guide.hideBeacon();
 | `borderWidth` | `number` | `3` | Width of the expanding wave border in pixels. |
 | `speed` | `number` | `2` | Duration in seconds for a complete wave cycle. |
 | `dismissOnClick` | `boolean` | `true` | When `true`, clicking the target element immediately dismisses and removes the beacon. |
+| `text` | `string \| object` | `undefined` | Optional text label. Pass a string for default dark pill, or an options object. See table below. |
+
+### `beacon.text` Options
+
+| Property | Type | Default | Description |
+|---|---|---|---|
+| `content` | `string` | *(Required)* | Text string displayed inside the pill. |
+| `position` | `string` | `'top'` | Placement relative to element: `'top'`, `'bottom'`, `'left'`, `'right'`, or `'auto'` (auto-flips if overflowing). |
+| `theme` | `string` | `'dark'` | Predefined theme: `'dark'`, `'light'`, or `'accent'`. |
+| `icon` | `string` | `''` | Optional prefix string, emoji, or icon (e.g. `'👉'`, `'🚀'`). |
+| `className` | `string` | `''` | Custom CSS class name(s) added to the label element. |
+| `background` | `string` | `''` | Custom background CSS color (overrides theme background and arrow color). |
+| `color` | `string` | `''` | Custom text CSS color (overrides theme text color). |
 
 ---
 
