@@ -110,7 +110,7 @@
       'allowBackdropInteraction',
       'onHighlightStarted', 'onHighlighted', 'onDeselected',
       'onDestroyStarted', 'onDestroyed', 'onNextClick', 'onPrevClick',
-      'onCloseClick', 'onPopoverRender', 'persist', 'persistKey', 'persistStorage', 'persistExpiry', 'theme', 'autoRefresh', 'autoRefreshInterval', 'onStepChange', 'onTourComplete',
+      'onCloseClick', 'onPopoverRender', 'persist', 'persistKey', 'persistStorage', 'persistExpiry', 'theme', 'autoRefresh', 'autoRefreshInterval', 'onStepChange', 'onTourComplete', 'beacon',
     ];
     var configKeys = Object.keys(config);
     for (var i = 0; i < configKeys.length; i++) {
@@ -280,6 +280,30 @@
     if (step.ariaLabel !== undefined && typeof step.ariaLabel !== 'string') {
       throw new TamperGuideError(ErrorCodes.INVALID_STEP, '"ariaLabel" in step ' + index + ' must be a string for screen reader announcements.');
     }
+    if (step.beacon !== undefined) {
+      if (typeof step.beacon !== 'boolean' && (typeof step.beacon !== 'object' || step.beacon === null)) {
+        throw new TamperGuideError(ErrorCodes.INVALID_STEP, '"beacon" in step ' + index + ' must be a boolean or an options object. ' +
+          'Example: beacon: { shape: "adaptive", color: "#f59e0b" }');
+      }
+      if (typeof step.beacon === 'object') {
+        var validShapes = ['adaptive', 'circle', 'radar'];
+        if (step.beacon.shape !== undefined && validShapes.indexOf(step.beacon.shape) === -1) {
+          throw new TamperGuideError(ErrorCodes.INVALID_STEP, '"beacon.shape" in step ' + index + ' must be one of: ' + validShapes.join(', ') + '. Received: "' + step.beacon.shape + '".');
+        }
+        if (step.beacon.color !== undefined && typeof step.beacon.color !== 'string') {
+          throw new TamperGuideError(ErrorCodes.INVALID_STEP, '"beacon.color" in step ' + index + ' must be a CSS color string.');
+        }
+        if (step.beacon.borderWidth !== undefined && (typeof step.beacon.borderWidth !== 'number' || step.beacon.borderWidth <= 0)) {
+          throw new TamperGuideError(ErrorCodes.INVALID_STEP, '"beacon.borderWidth" in step ' + index + ' must be a positive number in pixels.');
+        }
+        if (step.beacon.speed !== undefined && (typeof step.beacon.speed !== 'number' || step.beacon.speed <= 0)) {
+          throw new TamperGuideError(ErrorCodes.INVALID_STEP, '"beacon.speed" in step ' + index + ' must be a positive number (seconds).');
+        }
+        if (step.beacon.dismissOnClick !== undefined && typeof step.beacon.dismissOnClick !== 'boolean') {
+          throw new TamperGuideError(ErrorCodes.INVALID_STEP, '"beacon.dismissOnClick" in step ' + index + ' must be a boolean.');
+        }
+      }
+    }
   }
   // =========================================================================
   // MODULE: State Manager
@@ -384,6 +408,7 @@
   // =========================================================================
 
   var STYLE_ID = 'tamperguide-styles';
+  var injectedStyleEl = null;
 
   var THEMES = Object.freeze({
     'default': {},
@@ -444,7 +469,7 @@
   });
 
   function injectStyles(zOverlay, zPopover) {
-    if (document.getElementById(STYLE_ID)) return;
+    if (document.getElementById(STYLE_ID) || (injectedStyleEl && injectedStyleEl.parentNode)) return;
     var css = [
       '.tg-overlay { position: fixed; inset: 0; z-index: ' + zOverlay + '; pointer-events: none; transition: opacity 0.3s ease; }',
       '.tg-overlay svg { position: absolute; inset: 0; width: 100%; height: 100%; }',
@@ -513,36 +538,204 @@
       '}',
       '.tg-hotspot:hover .tg-hotspot-tooltip { opacity: 1; }',
       '',
-      
+      '@keyframes tg-beacon-ripple-adaptive {',
+      '  0% { transform: scale(1); opacity: 0.9; }',
+      '  100% { transform: scale(1.18); opacity: 0; }',
+      '}',
+      '@keyframes tg-beacon-ripple-circle {',
+      '  0% { transform: translate(-50%, -50%) scale(0.2); opacity: 0.95; }',
+      '  100% { transform: translate(-50%, -50%) scale(1.6); opacity: 0; }',
+      '}',
+      '.tg-beacon { position: absolute; pointer-events: none; z-index: ' + (zPopover + 1) + '; box-sizing: border-box; }',
+      '.tg-beacon-wave { position: absolute; inset: 0; border-radius: inherit; border: var(--tg-beacon-border-width, 3px) solid var(--tg-beacon-color, #f59e0b); box-sizing: border-box; pointer-events: none; will-change: transform, opacity; }',
+      '.tg-beacon-adaptive .tg-beacon-wave-1 { animation: tg-beacon-ripple-adaptive var(--tg-beacon-speed, 2s) cubic-bezier(0, 0.2, 0.8, 1) infinite; }',
+      '.tg-beacon-adaptive .tg-beacon-wave-2 { animation: tg-beacon-ripple-adaptive var(--tg-beacon-speed, 2s) cubic-bezier(0, 0.2, 0.8, 1) infinite; animation-delay: calc(var(--tg-beacon-speed, 2s) / -2); }',
+      '.tg-beacon-circle { width: 50px; height: 50px; border-radius: 50%; }',
+      '.tg-beacon-circle .tg-beacon-wave { left: 50%; top: 50%; width: 50px; height: 50px; border-radius: 50%; }',
+      '.tg-beacon-circle .tg-beacon-wave-1 { animation: tg-beacon-ripple-circle var(--tg-beacon-speed, 2s) cubic-bezier(0, 0.2, 0.8, 1) infinite; }',
+      '.tg-beacon-circle .tg-beacon-wave-2 { animation: tg-beacon-ripple-circle var(--tg-beacon-speed, 2s) cubic-bezier(0, 0.2, 0.8, 1) infinite; animation-delay: calc(var(--tg-beacon-speed, 2s) / -2); }',
+      '',
       '.tg-live-region { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }',
     ].join('\n');
-    var style = document.createElement('style');
-    style.id = STYLE_ID;
-    style.textContent = css;
-    (document.head || document.documentElement).appendChild(style);
+
+    // Strategy 1: Use GM_addStyle if granted and available (privileged extension API, bypasses CSP)
+    if (typeof GM_addStyle === 'function') {
+      try {
+        var res = GM_addStyle(css);
+        if (res && res.nodeType === 1) {
+          injectedStyleEl = res;
+          injectedStyleEl.id = STYLE_ID;
+        } else {
+          var found = document.getElementById(STYLE_ID);
+          if (found) injectedStyleEl = found;
+        }
+        return;
+      } catch (e) {
+        warn('CSP', 'GM_addStyle failed: ' + e.message + '. Falling back to DOM <style> element.');
+      }
+    }
+
+    // Strategy 2: Standard DOM element creation (for @grant none or environments without GM_addStyle)
+    try {
+      var style = document.createElement('style');
+      style.id = STYLE_ID;
+      style.textContent = css;
+      (document.head || document.documentElement).appendChild(style);
+      injectedStyleEl = style;
+    } catch (err) {
+      warn('CSP', 'Failed to inject styles into the document: ' + err.message + '. ' +
+        'If this page enforces a strict Content Security Policy (CSP), add:\n' +
+        '  // @grant GM_addStyle\n' +
+        'to your userscript header to allow TamperGuide to bypass CSP restrictions.');
+    }
   }
 
   function removeStyles() {
+    if (injectedStyleEl && injectedStyleEl.parentNode) {
+      try { injectedStyleEl.remove(); }
+      catch (e) { /* Best effort */ }
+      injectedStyleEl = null;
+    }
     var el = document.getElementById(STYLE_ID);
-    if (el) el.remove();
+    if (el && el.parentNode) {
+      try { el.remove(); }
+      catch (e) { /* Best effort */ }
+    }
   }
 
   // =========================================================================
   // MODULE: DOM Utilities
   // =========================================================================
 
+  /**
+   * Crosses shadow root boundaries to find the logical parent element.
+   * If the node is directly inside a ShadowRoot, parentElement is null,
+   * but parentNode.host gives the custom element (host) in the outer DOM.
+   */
+  function getParentCrossShadow(element) {
+    if (!element) return null;
+    if (element.parentElement) return element.parentElement;
+    if (element.parentNode && element.parentNode.host) return element.parentNode.host;
+    return null;
+  }
+
+  /**
+   * Recursively walks open shadow roots looking for a matching selector.
+   */
+  function findInShadowRoots(selector, root) {
+    var scope = (root === document || !root) ? document.body : root;
+    if (!scope) return null;
+
+    // Check immediate shadow root if scope is a shadow host
+    if (scope.shadowRoot) {
+      try {
+        var found = scope.shadowRoot.querySelector(selector);
+        if (found) return found;
+        var nested = findInShadowRoots(selector, scope.shadowRoot);
+        if (nested) return nested;
+      } catch (e) {}
+    }
+
+    // Walk all descendants that might have an open shadowRoot using TreeWalker
+    var walker = null;
+    if (typeof document !== 'undefined' && typeof document.createTreeWalker === 'function') {
+      try {
+        var filter = (typeof NodeFilter !== 'undefined' && NodeFilter.SHOW_ELEMENT) ? NodeFilter.SHOW_ELEMENT : 1;
+        walker = document.createTreeWalker(scope, filter, null, false);
+      } catch (e) {
+        walker = null;
+      }
+    }
+
+    if (walker) {
+      var node = walker.currentNode || walker.nextNode();
+      while (node) {
+        if (node.shadowRoot) {
+          try {
+            var el = node.shadowRoot.querySelector(selector);
+            if (el) return el;
+            var sub = findInShadowRoots(selector, node.shadowRoot);
+            if (sub) return sub;
+          } catch (e) {}
+        }
+        node = walker.nextNode();
+      }
+    } else if (scope.querySelectorAll) {
+      try {
+        var all = scope.querySelectorAll('*');
+        for (var i = 0; i < all.length; i++) {
+          if (all[i].shadowRoot) {
+            var el2 = all[i].shadowRoot.querySelector(selector);
+            if (el2) return el2;
+            var sub2 = findInShadowRoots(selector, all[i].shadowRoot);
+            if (sub2) return sub2;
+          }
+        }
+      } catch (e) {}
+    }
+
+    return null;
+  }
+
+  /**
+   * Queries an element across Shadow DOM boundaries using piercing syntax (>>> or ::shadow),
+   * or by recursively searching open shadow roots if standard querySelector returns null.
+   *
+   * @param {string} selector
+   * @param {Node} [root=document]
+   * @returns {Element|null}
+   */
+  function querySelectorDeep(selector, root) {
+    if (!selector || typeof selector !== 'string') return null;
+    root = root || document;
+
+    // 1. Piercing selector syntax: e.g. "my-element >>> .inner-button" or "host::shadow button"
+    var delimiter = selector.indexOf('>>>') !== -1 ? '>>>' : (selector.indexOf('::shadow') !== -1 ? '::shadow' : null);
+    if (delimiter) {
+      var parts = selector.split(delimiter).map(function (s) { return s.trim(); }).filter(Boolean);
+      var current = root;
+      for (var i = 0; i < parts.length; i++) {
+        if (!current) return null;
+        var part = parts[i];
+        var next = null;
+        var scope = (current.shadowRoot && i > 0) ? current.shadowRoot : current;
+        try {
+          next = scope.querySelector(part);
+        } catch (e) {
+          return null;
+        }
+        if (!next && current.shadowRoot && scope !== current.shadowRoot) {
+          try { next = current.shadowRoot.querySelector(part); } catch (e) {}
+        }
+        current = next;
+      }
+      return current instanceof Element ? current : null;
+    }
+
+    // 2. Fast path: Direct query in the current root
+    try {
+      var direct = root.querySelector(selector);
+      if (direct) return direct;
+    } catch (e) {
+      return null;
+    }
+
+    // 3. Fallback: Search inside all open ShadowRoots in root
+    return findInShadowRoots(selector, root);
+  }
+
   function resolveElement(element) {
     if (!element) return null;
     try {
       if (typeof element === 'function') {
         var result = element();
-        if (result instanceof Element) return result;
+        if (result instanceof Element) return (result.isConnected || document.body.contains(result)) ? result : null;
         warn(ErrorCodes.ELEMENT_NOT_FOUND, 'element() did not return a DOM Element.');
         return null;
       }
-      if (element instanceof Element) return document.body.contains(element) ? element : null;
+      if (element instanceof Element) return (element.isConnected || document.body.contains(element)) ? element : null;
       if (typeof element === 'string') {
-        var found = document.querySelector(element);
+        var found = querySelectorDeep(element);
         if (!found) warn(ErrorCodes.ELEMENT_NOT_FOUND, 'No element for "' + element + '".');
         return found;
       }
@@ -596,23 +789,25 @@
   function isInsideFixedContainer(element) {
     var c = element;
     while (c && c !== document.body && c !== document.documentElement) {
-      if (window.getComputedStyle(c).position === 'fixed') return true;
-      c = c.parentElement;
+      if (c.nodeType === 1 && window.getComputedStyle(c).position === 'fixed') return true;
+      c = getParentCrossShadow(c);
     }
     return false;
   }
 
   function findStackingAncestor(element) {
-    var c = element ? element.parentElement : null;
+    var c = element ? getParentCrossShadow(element) : null;
     while (c && c !== document.body && c !== document.documentElement) {
-      var style = window.getComputedStyle(c);
-      var pos = style.position;
-      var z = style.zIndex;
-      var transform = style.transform || style.webkitTransform;
-      if (pos !== 'static' && z !== 'auto') return c;
-      if (pos === 'fixed' || pos === 'sticky') return c;
-      if (transform && transform !== 'none') return c;
-      c = c.parentElement;
+      if (c.nodeType === 1) {
+        var style = window.getComputedStyle(c);
+        var pos = style.position;
+        var z = style.zIndex;
+        var transform = style.transform || style.webkitTransform;
+        if (pos !== 'static' && z !== 'auto') return c;
+        if (pos === 'fixed' || pos === 'sticky') return c;
+        if (transform && transform !== 'none') return c;
+      }
+      c = getParentCrossShadow(c);
     }
     return null;
   }
@@ -621,10 +816,12 @@
     var highest = 0;
     var current = element;
     while (current && current !== document.body && current !== document.documentElement) {
-      var style = window.getComputedStyle(current);
-      var z = parseInt(style.zIndex, 10);
-      if (!isNaN(z) && z > highest) highest = z;
-      current = current.parentElement;
+      if (current.nodeType === 1) {
+        var style = window.getComputedStyle(current);
+        var z = parseInt(style.zIndex, 10);
+        if (!isNaN(z) && z > highest) highest = z;
+      }
+      current = getParentCrossShadow(current);
     }
     return highest;
   }
@@ -1333,10 +1530,10 @@
 
       if (selector) {
         try {
-          target = document.querySelector(selector);
+          target = querySelectorDeep(selector);
         } catch (e) {
           warn(ErrorCodes.ADVANCE_ON_ERROR,
-            'advanceOn.selector "' + selector + '" caused a querySelector error: ' + e.message + '. ' +
+            'advanceOn.selector "' + selector + '" caused an error: ' + e.message + '. ' +
             'Make sure the selector is valid CSS. The step will work normally without advanceOn.');
           return;
         }
@@ -1495,7 +1692,7 @@
         var hs = hotspots[keys[i]];
         // Try to re-resolve the element in case it was re-rendered.
         if (hs.selector) {
-          var el = document.querySelector(hs.selector);
+          var el = querySelectorDeep(hs.selector);
           if (el) hs.targetElement = el;
         }
         positionHotspot(hs);
@@ -1543,7 +1740,7 @@
         remove(selector);
       }
 
-      var targetElement = document.querySelector(selector);
+      var targetElement = querySelectorDeep(selector);
       if (!targetElement) {
         warn(ErrorCodes.HOTSPOT_ERROR,
           'addHotspot() could not find element "' + selector + '" in the DOM. ' +
@@ -1646,6 +1843,171 @@
     }
 
     return { add: add, remove: remove, removeAll: removeAll, repositionAll: repositionAll };
+  }
+
+  // =========================================================================
+  // MODULE: Beacon Manager (Click Indicator)
+  // =========================================================================
+  // Manages interactive visual beacons (ripples/halos) that highlight elements
+  // prompting the user to click them. Supports an adaptive shape matching the
+  // target's border-radius and bounding box, or a circular radar pulse.
+  // =========================================================================
+
+  function createBeaconManager(zPopover) {
+    var beaconEl = null;
+    var currentTarget = null;
+    var currentOptions = null;
+    var clickHandler = null;
+    var resizeHandler = null;
+
+    var COLOR_PRESETS = {
+      yellow: '#f59e0b',
+      amber: '#f59e0b',
+      blue: '#3b82f6',
+      green: '#10b981',
+      red: '#ef4444',
+      purple: '#a855f7',
+      cyan: '#06b6d4',
+      pink: '#ec4899',
+    };
+
+    function resolveColor(c) {
+      if (!c || typeof c !== 'string') return '#f59e0b';
+      var lower = c.toLowerCase();
+      if (COLOR_PRESETS[lower]) return COLOR_PRESETS[lower];
+      return c;
+    }
+
+    function hide() {
+      if (clickHandler && currentTarget) {
+        try { currentTarget.removeEventListener('click', clickHandler, true); }
+        catch (e) { /* Best effort */ }
+        clickHandler = null;
+      }
+      if (beaconEl && beaconEl.parentNode) {
+        beaconEl.remove();
+      }
+      beaconEl = null;
+      currentTarget = null;
+      currentOptions = null;
+      if (resizeHandler) {
+        window.removeEventListener('resize', resizeHandler);
+        window.removeEventListener('scroll', resizeHandler);
+        resizeHandler = null;
+      }
+    }
+
+    function position() {
+      if (!beaconEl || !currentTarget) return;
+      if (!document.body.contains(currentTarget) && !currentTarget.isConnected) {
+        beaconEl.style.display = 'none';
+        return;
+      }
+      beaconEl.style.display = '';
+
+      var rect = currentTarget.getBoundingClientRect();
+      var isFixed = isInsideFixedContainer(currentTarget) || (window.getComputedStyle(currentTarget).position === 'fixed');
+      beaconEl.style.position = isFixed ? 'fixed' : 'absolute';
+      var scrollX = isFixed ? 0 : (window.pageXOffset || document.documentElement.scrollLeft || 0);
+      var scrollY = isFixed ? 0 : (window.pageYOffset || document.documentElement.scrollTop || 0);
+
+      var shape = (currentOptions && currentOptions.shape) || 'adaptive';
+      if (shape === 'circle' || shape === 'radar') {
+        var cx = rect.left + scrollX + rect.width / 2;
+        var cy = rect.top + scrollY + rect.height / 2;
+        var sz = Math.max(36, Math.min(rect.width, rect.height));
+        beaconEl.style.left = (cx - sz / 2) + 'px';
+        beaconEl.style.top = (cy - sz / 2) + 'px';
+        beaconEl.style.width = sz + 'px';
+        beaconEl.style.height = sz + 'px';
+        beaconEl.style.borderRadius = '50%';
+      } else {
+        // Adaptive mode: matches bounding box and border radius
+        beaconEl.style.left = (rect.left + scrollX) + 'px';
+        beaconEl.style.top = (rect.top + scrollY) + 'px';
+        beaconEl.style.width = rect.width + 'px';
+        beaconEl.style.height = rect.height + 'px';
+
+        try {
+          var comp = window.getComputedStyle(currentTarget);
+          beaconEl.style.borderRadius = comp.borderRadius || '4px';
+        } catch (e) {
+          beaconEl.style.borderRadius = '4px';
+        }
+      }
+    }
+
+    function show(target, options) {
+      hide();
+      var el = (typeof target === 'string') ? querySelectorDeep(target) : target;
+      if (!el || !(el instanceof Element)) {
+        if (typeof target === 'string') {
+          warn(ErrorCodes.ELEMENT_NOT_FOUND, 'showBeacon() could not find element "' + target + '".');
+        }
+        return;
+      }
+
+      var opts = (typeof options === 'object' && options !== null) ? options : {};
+      currentTarget = el;
+      currentOptions = opts;
+
+      var shape = (opts.shape === 'circle' || opts.shape === 'radar') ? 'circle' : 'adaptive';
+      var color = resolveColor(opts.color);
+      var speed = (typeof opts.speed === 'number' && opts.speed > 0) ? opts.speed + 's' : '2s';
+      var borderWidth = (typeof opts.borderWidth === 'number' && opts.borderWidth > 0) ? opts.borderWidth + 'px' : '3px';
+
+      beaconEl = document.createElement('div');
+      beaconEl.className = 'tg-beacon tg-beacon-' + shape;
+      beaconEl.style.setProperty('--tg-beacon-color', color);
+      beaconEl.style.setProperty('--tg-beacon-speed', speed);
+      beaconEl.style.setProperty('--tg-beacon-border-width', borderWidth);
+
+      var wave1 = document.createElement('div');
+      wave1.className = 'tg-beacon-wave tg-beacon-wave-1';
+      var wave2 = document.createElement('div');
+      wave2.className = 'tg-beacon-wave tg-beacon-wave-2';
+
+      beaconEl.appendChild(wave1);
+      beaconEl.appendChild(wave2);
+      document.body.appendChild(beaconEl);
+
+      position();
+
+      if (!resizeHandler) {
+        resizeHandler = function () { position(); };
+        window.addEventListener('resize', resizeHandler);
+        window.addEventListener('scroll', resizeHandler, { passive: true });
+      }
+
+      // Dismiss on click (default true)
+      if (opts.dismissOnClick !== false) {
+        clickHandler = function () {
+          hide();
+        };
+        try { currentTarget.addEventListener('click', clickHandler, true); }
+        catch (e) { /* Best effort */ }
+      }
+    }
+
+    function reposition() {
+      position();
+    }
+
+    function destroy() {
+      hide();
+    }
+
+    function getElement() {
+      return beaconEl;
+    }
+
+    return {
+      show: show,
+      hide: hide,
+      reposition: reposition,
+      destroy: destroy,
+      getElement: getElement,
+    };
   }
 
   // =========================================================================
@@ -2375,6 +2737,7 @@
     var accessibilityManager = createAccessibilityManager();
     var advanceOnManager = createAdvanceOnManager();
     var hotspotManager = createHotspotManager(zPopover);
+    var beaconManager = createBeaconManager(zPopover);
     // autoRefreshManager is created later in init() because it needs
     // the handleRefresh function which is defined below.
     var autoRefreshManager = null;
@@ -2495,6 +2858,7 @@
         var he = highlightManager.highlight(element);
         stateManager.setState('activeElement', he);
         popoverManager.hide();
+        beaconManager.hide();
 
         // [NEW v1.5.0] Track step change for analytics.
         analyticsTracker.trackStep(idx, step);
@@ -2533,6 +2897,13 @@
             advanceOnManager.attach(step, element, function () {
               handleNext();
             });
+          }
+
+          // [NEW v1.6.0] Attach click indicator / beacon if configured.
+          var beaconOpt = (step.beacon !== undefined) ? step.beacon : configManager.getConfig('beacon');
+          if (beaconOpt && element) {
+            var beaconConfig = (typeof beaconOpt === 'object' && beaconOpt !== null) ? beaconOpt : {};
+            beaconManager.show(element, beaconConfig);
           }
 
           safeHook(step.onHighlighted || configManager.getConfig('onHighlighted'),
@@ -2575,6 +2946,7 @@
       // [NEW v1.5.0] Clean up current step's listeners before transitioning.
       advanceOnManager.detach();
       accessibilityManager.releaseFocusTrap();
+      beaconManager.hide();
 
       var c = configManager.getConfig(), i = stateManager.getState('activeIndex'), s = c.steps || [];
       var as = stateManager.getState('activeStep'), ae = stateManager.getState('activeElement');
@@ -2590,12 +2962,13 @@
       // [NEW v1.5.0] Clean up current step's listeners before transitioning.
       advanceOnManager.detach();
       accessibilityManager.releaseFocusTrap();
+      beaconManager.hide();
 
       var c = configManager.getConfig(), i = stateManager.getState('activeIndex');
       var as = stateManager.getState('activeStep'), ae = stateManager.getState('activeElement');
       var h = (as && as.popover && as.popover.onPrevClick) || c.onPrevClick;
       if (h && safeHook(h, ae, as, { config: c, state: stateManager.getState(), driver: api }) === false) return;
-            if (i !== undefined && i > 0) highlightStep(i - 1);
+      if (i !== undefined && i > 0) highlightStep(i - 1);
     }
 
     function handleClose() {
@@ -2603,6 +2976,7 @@
       // [NEW v1.5.0] Clean up current step's listeners before closing.
       advanceOnManager.detach();
       accessibilityManager.releaseFocusTrap();
+      beaconManager.hide();
 
       var c = configManager.getConfig();
       var as = stateManager.getState('activeStep'), ae = stateManager.getState('activeElement');
@@ -2616,6 +2990,7 @@
       overlayManager.handleResize();
       var el = stateManager.getState('activeElement'), st = stateManager.getState('activeStep');
       if (el && st) popoverManager.reposition(el, st);
+      beaconManager.reposition();
     }
 
     // [MODIFIED v1.5.0] performDestroy - added cleanup of all new modules:
@@ -2638,6 +3013,7 @@
       // [NEW v1.5.0] Clean up new modules before destroying core modules.
       // Order matters: detach listeners first, then stop observers, then remove DOM.
       advanceOnManager.detach();
+      beaconManager.destroy();
       if (activeWaitForCleanup) {
         activeWaitForCleanup();
         activeWaitForCleanup = null;
@@ -2742,6 +3118,7 @@
         stateManager.setState('activeStep', step);
         stateManager.setState('activeElement', he);
         stateManager.setState('activeIndex', undefined);
+        beaconManager.hide();
         var d = configManager.getConfig('animate') ? 350 : 50;
         setTimeout(function () {
           if (stateManager.getState('isInitialized') && step.popover) {
@@ -2750,6 +3127,10 @@
               state: stateManager.getState(),
               driver: api,
             });
+          }
+          if (stateManager.getState('isInitialized') && step.beacon && el) {
+            var bOpt = (typeof step.beacon === 'object' && step.beacon !== null) ? step.beacon : {};
+            beaconManager.show(el, bOpt);
           }
         }, d);
       },
@@ -2895,6 +3276,36 @@
        */
       removeAllHotspots: function () {
         hotspotManager.removeAll();
+      },
+
+      /**
+       * showBeacon(target: string | Element, options?: object): void
+       *
+       * Shows a non-blocking animated click indicator (cascading waves / radar pulse)
+       * on the specified element.
+       *
+       * Options:
+       *   shape          {string}  - 'adaptive' (default) or 'circle'/'radar'
+       *   color          {string}  - CSS color or preset ('yellow', 'blue', 'green', 'red', 'purple', 'cyan', 'pink')
+       *   borderWidth    {number}  - Border width in px (default: 3)
+       *   speed          {number}  - Ripple duration in seconds (default: 2)
+       *   dismissOnClick {boolean} - Auto-dismiss when target element is clicked (default: true)
+       *
+       * Usage:
+       *   guide.showBeacon('#submit-btn', { shape: 'adaptive', color: 'green' });
+       */
+      showBeacon: function (target, options) {
+        injectStyles(zOverlay, zPopover);
+        beaconManager.show(target, options);
+      },
+
+      /**
+       * hideBeacon(): void
+       *
+       * Hides and removes the currently active click indicator / beacon.
+       */
+      hideBeacon: function () {
+        beaconManager.hide();
       },
     };
 

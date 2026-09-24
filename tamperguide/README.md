@@ -36,17 +36,19 @@ Inspired by [driver.js](https://driverjs.com), designed specifically for the use
 9. [Conditional Steps](#conditional-steps)
 10. [Waiting for Elements](#waiting-for-elements)
 11. [Advance on Interaction](#advance-on-interaction)
-12. [Hotspots](#hotspots)
-13. [Analytics](#analytics)
-14. [Auto-Refresh](#auto-refresh)
-15. [Accessibility](#accessibility)
-16. [Hooks](#hooks)
-17. [API Reference](#api-reference)
-18. [Keyboard Shortcuts](#keyboard-shortcuts)
-19. [Error Handling](#error-handling)
-20. [Examples](#examples)
-21. [Migration from v1.4.1](#migration-from-v141)
-22. [License](#license)
+12. [Shadow DOM Support](#shadow-dom-support)
+13. [Click Indicator / Beacon](#click-indicator--beacon)
+14. [Hotspots](#hotspots)
+15. [Analytics](#analytics)
+16. [Auto-Refresh](#auto-refresh)
+17. [Accessibility](#accessibility)
+18. [Hooks](#hooks)
+19. [API Reference](#api-reference)
+20. [Keyboard Shortcuts](#keyboard-shortcuts)
+21. [Error Handling](#error-handling)
+22. [Examples](#examples)
+23. [Migration from v1.4.1](#migration-from-v141)
+24. [License](#license)
 
 ---
 
@@ -75,6 +77,18 @@ TamperGuide is used as a `@require` library inside your userscript header. Choos
 ```
 
 Once required, the library exposes the global function `tamperGuide` that is available everywhere in your script without any import statement.
+
+### Content Security Policy (CSP) & GM_addStyle
+
+By default, TamperGuide works with `// @grant none` on most websites by injecting a `<style>` element into `document.head`.
+
+However, if your userscript runs on websites with a strict **Content Security Policy** (such as GitHub, Twitter/X, or banking sites) that restricts inline `<style>` tags via `style-src` or `style-src-elem`, you can grant `GM_addStyle` in your userscript header:
+
+```js
+// @grant GM_addStyle
+```
+
+TamperGuide will automatically detect and prioritize `GM_addStyle` to inject styles through the userscript manager's privileged context, completely bypassing any CSP restrictions. If `GM_addStyle` is not available, it seamlessly falls back to standard DOM element creation.
 
 ---
 
@@ -221,6 +235,7 @@ All options are passed to the `tamperGuide(options)` factory function. Every opt
 | `smoothScroll` | `boolean` | `true` | Smoothly scroll the page to bring off-screen elements into view before highlighting them. |
 | `scrollIntoViewOptions` | `object` | `{ behavior: 'smooth', block: 'center' }` | Options passed directly to `element.scrollIntoView()`. Only used when `smoothScroll` is `true`. |
 | `disableActiveInteraction` | `boolean` | `false` | When `true`, pointer events on the highlighted element are disabled, preventing the user from clicking it during the tour. |
+| `beacon` | `boolean \| object` | `undefined` | Shows a non-blocking animated click indicator (adaptive contour ripple or radar circle) on highlighted elements. See the [Click Indicator / Beacon](#click-indicator--beacon) section. |
 
 ### Persistence
 
@@ -325,6 +340,20 @@ Each entry in the `steps` array is a plain object with the following shape:
   // When omitted, the popover title is used. When neither is available,
   // a default "Step N of M" string is announced.
   ariaLabel: 'Configure your notification preferences in this panel',
+
+  // ------------------------------------------------------------------
+  // beacon (optional) — NEW in v1.6.0
+  // ------------------------------------------------------------------
+  // Displays an animated non-blocking click indicator on the element.
+  // Can be a boolean (`true`) or an options object:
+  // beacon: {
+  //   shape: 'adaptive',     // 'adaptive' (default) or 'circle'/'radar'
+  //   color: '#f59e0b',       // CSS color or preset ('yellow', 'blue', 'green', 'red', etc.)
+  //   borderWidth: 3,         // ripple border width in px (default: 3)
+  //   speed: 2,               // ripple cycle duration in seconds (default: 2)
+  //   dismissOnClick: true,   // auto-dismiss on element click (default: true)
+  // },
+  beacon: true,
 
   // ------------------------------------------------------------------
   // popover (optional)
@@ -614,6 +643,124 @@ If the target element specified by `advanceOn.selector` cannot be found in the D
 
 ---
 
+## Shadow DOM Support
+
+TamperGuide natively supports modern Web Components and encapsulated shadow roots (`#shadow-root (open)`).
+
+### Piercing Selector Syntax (`>>>`)
+
+You can target elements nested inside shadow roots using the piercing delimiter `>>>` (or `::shadow`):
+
+```js
+{
+  element: 'user-profile >>> action-toolbar >>> button.edit-profile',
+  popover: {
+    title: 'Edit Profile',
+    description: 'This button is located inside an encapsulated web component.',
+  },
+}
+```
+
+### Automatic Recursive Discovery
+
+If you provide a standard selector (e.g. `'#submit-btn'` or `'.login-button'`), TamperGuide first checks the main document. If the element is not found in the light DOM, it automatically searches all open shadow roots recursively across the DOM tree.
+
+### Direct Element References and Ancestor Traversal
+
+- Direct DOM element references located inside open shadow roots are recognized and validated via `element.isConnected`.
+- Ancestor traversal properly bridges `ShadowRoot.host`, ensuring that `position: fixed` containers and `z-index` stacking contexts above the web component are correctly detected.
+- Both `advanceOn` and `addHotspot()` also support shadow DOM piercing selectors and automatic shadow root discovery.
+
+---
+
+## Click Indicator / Beacon
+
+The **Click Indicator / Beacon** displays an animated, non-blocking visual prompt (cascading concentric waves or radar pulses) that indicates to the user exactly where to click. It is especially useful in walkthroughs where the user must take an action on a specific button or interface element to continue.
+
+### Key Features
+
+- **Continuous Cascading Ripple**: Emits staggered concentric waves with hardware-accelerated CSS keyframes. Before the outer wave completely expands and fades away, a new wave begins expanding from within, creating a smooth, unbroken pulse stream.
+- **Adaptive Outline Mode (`shape: 'adaptive'`)**: Inspects the target element's bounding rectangle and computed `border-radius`. The ripple matches the element's exact contour—whether rectangular, rounded, or pill-shaped—and expands gently outward.
+- **Circular Radar Mode (`shape: 'circle'` / `'radar'`)**: Emits concentric circular pulses centered on the target element. Ideal for icon buttons, avatars, checkboxes, or small circular triggers.
+- **Non-blocking Interaction (`pointer-events: none`)**: The beacon does not intercept or block user clicks. Clicks pass through directly to the underlying element.
+- **Click Dismissal (`dismissOnClick: true`)**: Automatically removes the beacon as soon as the target element is clicked.
+- **Sticky / Fixed Awareness**: Automatically tracks elements inside `position: fixed` containers or headers, and repositions seamlessly during window resize and scrolling.
+
+### Using Beacons in Tours
+
+You can enable a beacon on any tour step using `beacon: true` (which uses default adaptive shape and amber color) or an options object:
+
+```js
+const guide = tamperGuide({
+  steps: [
+    {
+      element: '#download-btn',
+      popover: {
+        title: 'Download Update',
+        description: 'Click this button to start downloading the files.',
+      },
+      // Simple boolean: adaptive shape, default amber color
+      beacon: true,
+      // Automatically advance tour when user clicks the button
+      advanceOn: { event: 'click' },
+    },
+    {
+      element: '#settings-icon',
+      popover: {
+        title: 'Preferences',
+        description: 'Click the gear icon to configure options.',
+      },
+      // Detailed beacon customization
+      beacon: {
+        shape: 'circle',         // 'circle' or 'adaptive'
+        color: 'green',          // preset name or CSS hex/rgb
+        borderWidth: 3,          // ripple thickness in px
+        speed: 1.8,              // ripple cycle duration in seconds
+        dismissOnClick: true,    // auto-remove on click
+      },
+    },
+  ],
+});
+
+guide.drive();
+```
+
+### Standalone API (`showBeacon` and `hideBeacon`)
+
+Beacons can also be used independently of a guided tour, for example as contextual hints in your userscript:
+
+```js
+const guide = tamperGuide();
+
+// Show an adaptive ripple on a button
+guide.showBeacon('#submit-form', {
+  shape: 'adaptive',
+  color: '#3b82f6', // blue
+  speed: 2,
+});
+
+// Or show a circular radar pulse on an icon
+guide.showBeacon('#help-icon', {
+  shape: 'circle',
+  color: 'purple',
+});
+
+// Manually hide any active beacon
+guide.hideBeacon();
+```
+
+### Beacon Configuration Options
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `shape` | `string` | `'adaptive'` | `'adaptive'` matches the element's bounding box and `border-radius`. `'circle'` (or `'radar'`) emits concentric circular ripples from the element's center. |
+| `color` | `string` | `'#f59e0b'` | Any CSS color string (hex, rgb, hsl) or a preset name: `'yellow'`, `'amber'`, `'blue'`, `'green'`, `'red'`, `'purple'`, `'cyan'`, `'pink'`. |
+| `borderWidth` | `number` | `3` | Width of the expanding wave border in pixels. |
+| `speed` | `number` | `2` | Duration in seconds for a complete wave cycle. |
+| `dismissOnClick` | `boolean` | `true` | When `true`, clicking the target element immediately dismisses and removes the beacon. |
+
+---
+
 ## Hotspots
 
 Hotspots are persistent, non-blocking visual hints that can be shown on any element without starting a full tour. Each hotspot displays a pulsing dot at the top-right corner of the target element, with a tooltip that appears on hover.
@@ -892,6 +1039,13 @@ The `tamperGuide(options)` factory returns an API object with the following meth
 | `removeHotspot` | `removeHotspot(selector: string): void` | Removes a specific hotspot by its element selector. |
 | `removeAllHotspots` | `removeAllHotspots(): void` | Removes all active hotspots from the page. |
 
+### Click Indicator / Beacon
+
+| Method | Signature | Description |
+|---|---|---|
+| `showBeacon` | `showBeacon(target: string \| Element, options?: object): void` | Shows an animated, non-blocking click indicator (adaptive contour ripple or radar circle) on an element. See the [Click Indicator / Beacon](#click-indicator--beacon) section. |
+| `hideBeacon` | `hideBeacon(): void` | Hides and removes the currently active click indicator. |
+
 ---
 
 ## Keyboard Shortcuts
@@ -1001,6 +1155,10 @@ Demonstrates both `waitFor` and `advanceOn` in a single self-contained tour with
 ### Hotspots (`examples/hotspots.user.js`)
 
 Demonstrates the hotspot system. Adds four hotspots with different configurations — default appearance, custom colour, `dismissOnClick`, and `autoDismiss` — via a single menu command. Provides separate menu commands for removing a specific hotspot and for removing all hotspots. Includes comments explaining hotspot behaviour in SPAs and on element removal.
+
+### Click Indicator / Beacon (`examples/beacon.user.js`)
+
+Demonstrates the visual click indicator system. Shows adaptive contour beacons that match rectangular and pill-shaped action buttons, circular radar pulses for icon buttons, integration with tour steps using `advanceOn: { event: 'click' }`, and standalone usage with `guide.showBeacon()` and `guide.hideBeacon()`.
 
 ### Analytics (`examples/analytics.user.js`)
 
