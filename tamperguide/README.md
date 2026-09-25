@@ -192,8 +192,8 @@ All options are passed to the `tamperGuide(options)` factory function. Every opt
 |---|---|---|---|
 | `overlayColor` | `string` | `'#000'` | Background color of the dimmed overlay. Accepts any valid CSS color value. |
 | `overlayOpacity` | `number` | `0.7` | Opacity of the overlay. Must be between `0` (transparent) and `1` (fully opaque). |
-| `stagePadding` | `number` | `10` | Extra space (in pixels) added around the highlighted element's bounding box. |
-| `stageRadius` | `number` | `5` | Border radius (in pixels) of the rounded cutout that frames the highlighted element. |
+| `stagePadding` | `number \| object \| Array` | `10` | Extra space (in pixels) added around the highlighted element's bounding box. Accepts a uniform number (`10`), an object with directional offsets (`{ top: 2, bottom: 2, left: 6, right: 6 }` or `{ x: 6, y: 2 }`), or an array (`[y, x]`). Can also be customized per-step. |
+| `stageRadius` | `number \| 'auto'` | `5` | Border radius (in pixels) of the rounded cutout that frames the highlighted element. Set to `'auto'` to automatically match the target element's computed CSS `border-radius` (supporting pill shapes `9999px`, circles, and rounded corners). Can also be customized per-step. |
 | `allowBackdropInteraction` | `boolean` | `false` | When `true`, the user can interact with elements outside the highlighted area while the tour is active. By default all backdrop clicks are captured. |
 
 ### Popover Appearance
@@ -374,6 +374,18 @@ Each entry in the `steps` array is a plain object with the following shape:
   //   dismissOnClick: true,   // auto-dismiss on element click (default: true)
   // },
   beacon: true,
+
+  // ------------------------------------------------------------------
+  // stagePadding & stageRadius (optional) — NEW in v1.6.0
+  // ------------------------------------------------------------------
+  // Override global stagePadding and stageRadius for this specific step.
+  // Useful for tight elements (like tabs or toolbar buttons) that need
+  // compact padding or adaptive curvature:
+  // stagePadding: 4,                                    // uniform number
+  // stagePadding: { top: 2, bottom: 2, left: 6, right: 6 }, // asymmetric
+  // stageRadius: 'auto',                                // match element border-radius
+  stagePadding: { top: 2, bottom: 2, left: 6, right: 6 },
+  stageRadius: 'auto',
 
   // ------------------------------------------------------------------
   // popover (optional)

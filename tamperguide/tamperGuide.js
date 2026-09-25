@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         TamperGuide
 // @namespace    https://github.com/UNKchr/tamperguide
-// @version      1.5.3
+// @version      1.6.0
 // @author       UNKchr
 // @description  Lightweight library for product tours, highlights, and contextual help in Tampermonkey userscripts.
 // @license      MIT
 // ==/UserScript==
 
 // ===========================================================================
-// TamperGuide v1.5.0
+// TamperGuide v1.6.0
 // ===========================================================================
 
 (function () {
@@ -134,6 +134,16 @@
     if (config.overlayOpacity !== undefined) {
       if (typeof config.overlayOpacity !== 'number' || config.overlayOpacity < 0 || config.overlayOpacity > 1) {
         throw new TamperGuideError(ErrorCodes.INVALID_CONFIG, '"overlayOpacity" must be 0-1.');
+      }
+    }
+    if (config.stagePadding !== undefined) {
+      if (typeof config.stagePadding !== 'number' && !Array.isArray(config.stagePadding) && (typeof config.stagePadding !== 'object' || config.stagePadding === null)) {
+        throw new TamperGuideError(ErrorCodes.INVALID_CONFIG, '"stagePadding" must be a number, array, or object.');
+      }
+    }
+    if (config.stageRadius !== undefined) {
+      if (typeof config.stageRadius !== 'number' && config.stageRadius !== 'auto') {
+        throw new TamperGuideError(ErrorCodes.INVALID_CONFIG, '"stageRadius" must be a number or "auto".');
       }
     }
     if (config.showButtons !== undefined) {
@@ -356,6 +366,16 @@
     }
     if (step.beforeStep !== undefined && typeof step.beforeStep !== 'function') {
       throw new TamperGuideError(ErrorCodes.INVALID_STEP, '"beforeStep" in step ' + index + ' must be a function.');
+    }
+    if (step.stagePadding !== undefined) {
+      if (typeof step.stagePadding !== 'number' && !Array.isArray(step.stagePadding) && (typeof step.stagePadding !== 'object' || step.stagePadding === null)) {
+        throw new TamperGuideError(ErrorCodes.INVALID_STEP, '"stagePadding" in step ' + index + ' must be a number, array, or object.');
+      }
+    }
+    if (step.stageRadius !== undefined) {
+      if (typeof step.stageRadius !== 'number' && step.stageRadius !== 'auto') {
+        throw new TamperGuideError(ErrorCodes.INVALID_STEP, '"stageRadius" in step ' + index + ' must be a number or "auto".');
+      }
     }
   }
   // =========================================================================
@@ -853,13 +873,58 @@
   }
 
   function getElementRect(element, padding, radius) {
-    padding = padding || 0;
-    radius = radius || 0;
+    var padTop = 0, padRight = 0, padBottom = 0, padLeft = 0;
+    if (typeof padding === 'number') {
+      padTop = padRight = padBottom = padLeft = padding;
+    } else if (Array.isArray(padding)) {
+      if (padding.length === 2) {
+        padTop = padBottom = Number(padding[0]) || 0;
+        padLeft = padRight = Number(padding[1]) || 0;
+      } else if (padding.length >= 4) {
+        padTop = Number(padding[0]) || 0;
+        padRight = Number(padding[1]) || 0;
+        padBottom = Number(padding[2]) || 0;
+        padLeft = Number(padding[3]) || 0;
+      }
+    } else if (padding && typeof padding === 'object') {
+      padTop = Number(padding.top !== undefined ? padding.top : (padding.y || 0)) || 0;
+      padBottom = Number(padding.bottom !== undefined ? padding.bottom : (padding.y || 0)) || 0;
+      padLeft = Number(padding.left !== undefined ? padding.left : (padding.x || 0)) || 0;
+      padRight = Number(padding.right !== undefined ? padding.right : (padding.x || 0)) || 0;
+    }
+
     var rect = element.getBoundingClientRect();
+    var x = rect.left - padLeft;
+    var y = rect.top - padTop;
+    var width = rect.width + padLeft + padRight;
+    var height = rect.height + padTop + padBottom;
+
+    var actualRadius = 0;
+    if (radius === 'auto') {
+      try {
+        var comp = window.getComputedStyle(element);
+        var br = comp.borderRadius || '';
+        if (br.indexOf('%') !== -1 || parseFloat(br) >= 9000) {
+          actualRadius = Math.min(width, height) / 2;
+        } else {
+          var parsed = parseFloat(br);
+          actualRadius = isNaN(parsed) ? 5 : parsed;
+        }
+      } catch (e) {
+        actualRadius = 5;
+      }
+    } else if (typeof radius === 'number') {
+      actualRadius = radius;
+    } else {
+      actualRadius = 0;
+    }
+
     return {
-      x: rect.left - padding, y: rect.top - padding,
-      width: rect.width + padding * 2, height: rect.height + padding * 2,
-      radius: radius,
+      x: x,
+      y: y,
+      width: width,
+      height: height,
+      radius: actualRadius,
     };
   }
 
@@ -2180,6 +2245,7 @@
       if (resizeHandler) {
         window.removeEventListener('resize', resizeHandler);
         window.removeEventListener('scroll', resizeHandler);
+        document.removeEventListener('scroll', resizeHandler, true);
         resizeHandler = null;
       }
     }
@@ -2340,6 +2406,7 @@
         resizeHandler = function () { position(); };
         window.addEventListener('resize', resizeHandler);
         window.addEventListener('scroll', resizeHandler, { passive: true });
+        document.addEventListener('scroll', resizeHandler, { capture: true, passive: true });
       }
 
       // Dismiss on click (default true)
@@ -2938,9 +3005,18 @@
   // MODULE: Highlight Manager  [UNCHANGED]
   // =========================================================================
 
-  function createHighlightManager(configManager, overlayManager) {
+  function createHighlightManager(configManager, overlayManager, stateManager) {
     var activeElement = null;
+    var activeStep = null;
     var dummyElement = null;
+    var settleTimers = [];
+
+    function clearSettleTimers() {
+      for (var i = 0; i < settleTimers.length; i++) {
+        clearTimeout(settleTimers[i]);
+      }
+      settleTimers.length = 0;
+    }
 
     function getOrCreateDummy() {
       if (dummyElement && document.body.contains(dummyElement)) return dummyElement;
@@ -2951,29 +3027,41 @@
       return dummyElement;
     }
 
-    function highlight(element) {
+    function highlight(element, step) {
+      clearSettleTimers();
       var target = element || getOrCreateDummy();
       activeElement = target;
+      activeStep = step || (stateManager ? stateManager.getState('activeStep') : null);
       var config = configManager.getConfig();
       if (element && config.smoothScroll) bringIntoView(element, config.scrollIntoViewOptions);
       requestAnimationFrame(function () {
         requestAnimationFrame(function () { refresh(); });
       });
+      // Settle timers to continuously reposition the SVG cutout during smooth scrolling
+      settleTimers.push(setTimeout(function () { refresh(); }, 80));
+      settleTimers.push(setTimeout(function () { refresh(); }, 180));
+      settleTimers.push(setTimeout(function () { refresh(); }, 320));
+      settleTimers.push(setTimeout(function () { refresh(); }, 450));
       return target;
     }
 
-    function refresh() {
+    function refresh(step) {
       if (!activeElement) return;
       if (activeElement.id === 'tg-dummy-element') { overlayManager.updateHighlight(null); return; }
+      var currentStep = step || activeStep || (stateManager ? stateManager.getState('activeStep') : null);
       var config = configManager.getConfig();
-      var rect = getElementRect(activeElement, config.stagePadding, config.stageRadius);
+      var padding = (currentStep && currentStep.stagePadding !== undefined) ? currentStep.stagePadding : config.stagePadding;
+      var radius = (currentStep && currentStep.stageRadius !== undefined) ? currentStep.stageRadius : config.stageRadius;
+      var rect = getElementRect(activeElement, padding, radius);
       overlayManager.updateHighlight(rect);
     }
 
     function destroy() {
+      clearSettleTimers();
       if (dummyElement && dummyElement.parentNode) dummyElement.remove();
       dummyElement = null;
       activeElement = null;
+      activeStep = null;
     }
 
     function getActiveElement() { return activeElement; }
@@ -2982,12 +3070,13 @@
   }
 
   // =========================================================================
-  // MODULE: Events Manager  [UNCHANGED]
+  // MODULE: Events Manager  [MODIFIED v1.6.0 - container scroll capture added]
   // =========================================================================
 
   function createEventsManager(deps) {
     var cm = deps.configManager, sm = deps.stateManager, em = deps.emitter;
     var bound = [];
+    var scrollTimeout = null;
 
     function add(t, ev, h, o) {
       o = o || false;
@@ -2995,9 +3084,23 @@
       bound.push({ t: t, e: ev, h: h, o: o });
     }
 
+    function onScroll() {
+      if (!sm.getState('isInitialized')) return;
+      em.emit('refresh');
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(function () {
+        if (sm.getState('isInitialized')) em.emit('refresh');
+      }, 100);
+    }
+
     function init() {
       add(document, 'keydown', onKey, true);
       add(window, 'resize', onResize);
+      // Capture scroll events from any nested scrollable container in the DOM
+      add(document, 'scroll', onScroll, { capture: true, passive: true });
+      if (typeof window !== 'undefined' && 'onscrollend' in window) {
+        add(document, 'scrollend', onScroll, { capture: true, passive: true });
+      }
     }
 
     function onKey(e) {
@@ -3017,8 +3120,14 @@
     }
 
     function destroy() {
+      if (scrollTimeout) {
+        clearTimeout(scrollTimeout);
+        scrollTimeout = null;
+      }
       for (var i = 0; i < bound.length; i++) {
-        bound[i].t.removeEventListener(bound[i].e, bound[i].h, bound[i].o);
+        var b = bound[i];
+        var captureOpt = (typeof b.o === 'boolean') ? b.o : (b.o && b.o.capture ? true : false);
+        b.t.removeEventListener(b.e, b.h, captureOpt);
       }
       bound.length = 0;
     }
@@ -3126,7 +3235,7 @@
 
     var overlayManager = createOverlayManager(configManager, zOverlay);
     var popoverManager = createPopoverManager(configManager, zPopover);
-    var highlightManager = createHighlightManager(configManager, overlayManager);
+    var highlightManager = createHighlightManager(configManager, overlayManager, stateManager);
     var eventsManager = null;
     var clickRouter = null;
 
@@ -3264,7 +3373,7 @@
         stateManager.setState('activeStep', step);
         stateManager.setState('activeIndex', idx);
 
-        var he = highlightManager.highlight(element);
+        var he = highlightManager.highlight(element, step);
         stateManager.setState('activeElement', he);
         popoverManager.hide();
         beaconManager.hide();
@@ -3292,6 +3401,7 @@
         var delay = configManager.getConfig('animate') ? 350 : 50;
         setTimeout(function () {
           if (!stateManager.getState('isInitialized')) return;
+          highlightManager.refresh(step);
           if (step.popover) {
             popoverManager.render(step, element, ts, {
               config: configManager.getConfig(),
