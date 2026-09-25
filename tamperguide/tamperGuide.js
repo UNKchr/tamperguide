@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TamperGuide
 // @namespace    https://github.com/UNKchr/tamperguide
-// @version      1.5.2
+// @version      1.5.3
 // @author       UNKchr
 // @description  Lightweight library for product tours, highlights, and contextual help in Tampermonkey userscripts.
 // @license      MIT
@@ -110,7 +110,7 @@
       'allowBackdropInteraction',
       'onHighlightStarted', 'onHighlighted', 'onDeselected',
       'onDestroyStarted', 'onDestroyed', 'onNextClick', 'onPrevClick',
-      'onCloseClick', 'onPopoverRender', 'persist', 'persistKey', 'persistStorage', 'persistExpiry', 'theme', 'autoRefresh', 'autoRefreshInterval', 'onStepChange', 'onTourComplete', 'beacon',
+      'onCloseClick', 'onPopoverRender', 'persist', 'persistKey', 'persistStorage', 'persistExpiry', 'theme', 'autoRefresh', 'autoRefreshInterval', 'onStepChange', 'onTourComplete', 'beacon', 'strict', 'beforeStep',
     ];
     var configKeys = Object.keys(config);
     for (var i = 0; i < configKeys.length; i++) {
@@ -215,6 +215,12 @@
       if (typeof config.beacon !== 'boolean' && typeof config.beacon !== 'string' && (typeof config.beacon !== 'object' || config.beacon === null)) {
         throw new TamperGuideError(ErrorCodes.INVALID_CONFIG, '"beacon" in config must be a boolean, string, or an options object.');
       }
+    }
+    if (config.strict !== undefined && typeof config.strict !== 'boolean') {
+      throw new TamperGuideError(ErrorCodes.INVALID_CONFIG, '"strict" in config must be a boolean.');
+    }
+    if (config.beforeStep !== undefined && typeof config.beforeStep !== 'function') {
+      throw new TamperGuideError(ErrorCodes.INVALID_CONFIG, '"beforeStep" in config must be a function.');
     }
   }
 
@@ -345,6 +351,12 @@
         }
       }
     }
+    if (step.strict !== undefined && typeof step.strict !== 'boolean') {
+      throw new TamperGuideError(ErrorCodes.INVALID_STEP, '"strict" in step ' + index + ' must be a boolean.');
+    }
+    if (step.beforeStep !== undefined && typeof step.beforeStep !== 'function') {
+      throw new TamperGuideError(ErrorCodes.INVALID_STEP, '"beforeStep" in step ' + index + ' must be a function.');
+    }
   }
   // =========================================================================
   // MODULE: State Manager
@@ -387,8 +399,9 @@
     nextBtnText: 'Next &rarr;', prevBtnText: '&larr; Previous',
     doneBtnText: 'Done &#10003;', closeBtnText: '&times;',
     popoverClass: '', popoverOffset: 10, smoothScroll: true,
-    scrollIntoViewOptions: { behavior: 'smooth', block: 'center' },
+    scrollIntoViewOptions: { behavior: 'smooth', block: 'nearest', inline: 'nearest' },
     disableActiveInteraction: false, allowBackdropInteraction: false,
+    strict: false, beforeStep: undefined,
     onHighlightStarted: undefined, onHighlighted: undefined, onDeselected: undefined,
     onDestroyStarted: undefined, onDestroyed: undefined, onNextClick: undefined,
     onPrevClick: undefined, onCloseClick: undefined, onPopoverRender: undefined, persist: false, persistKey: '', persistStorage: 'localStorage', persistExpiry: 604800000, theme: 'default', autoRefresh: false, autoRefreshInterval: 300, onStepChange: undefined, onTourComplete: undefined,
@@ -624,6 +637,15 @@
       '.tg-beacon-label-text { display: inline-block; line-height: 1.3; }',
       '',
       '.tg-live-region { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }',
+      '',
+      '@keyframes tg-shake {',
+      '  0%, 100% { transform: translateX(0); }',
+      '  20% { transform: translateX(-6px); }',
+      '  40% { transform: translateX(6px); }',
+      '  60% { transform: translateX(-4px); }',
+      '  80% { transform: translateX(4px); }',
+      '}',
+      '.tg-shake { animation: tg-shake 0.38s ease-in-out !important; }',
     ].join('\n');
 
     // Strategy 1: Use GM_addStyle if granted and available (privileged extension API, bypasses CSP)
@@ -841,14 +863,64 @@
     };
   }
 
+  function hasScrollableAncestor(element) {
+    var c = element ? getParentCrossShadow(element) : null;
+    while (c && c !== document.body && c !== document.documentElement) {
+      if (c.nodeType === 1) {
+        var style = window.getComputedStyle(c);
+        var ox = style.overflowX, oy = style.overflowY;
+        if ((ox === 'auto' || ox === 'scroll') && (c.scrollWidth > c.clientWidth)) return true;
+        if ((oy === 'auto' || oy === 'scroll') && (c.scrollHeight > c.clientHeight)) return true;
+      }
+      c = getParentCrossShadow(c);
+    }
+    return false;
+  }
+
+  function isElementClippedOrOffscreen(element) {
+    if (!element || typeof element.getBoundingClientRect !== 'function') return false;
+    var r = element.getBoundingClientRect();
+    var vp = getViewportSize();
+    if (r.top < 0 || r.left < 0 || r.bottom > vp.height || r.right > vp.width) return true;
+    var c = getParentCrossShadow(element);
+    while (c && c !== document.body && c !== document.documentElement) {
+      if (c.nodeType === 1) {
+        var style = window.getComputedStyle(c);
+        var ox = style.overflowX, oy = style.overflowY;
+        var hasScrollX = (ox === 'auto' || ox === 'scroll' || ox === 'hidden');
+        var hasScrollY = (oy === 'auto' || oy === 'scroll' || oy === 'hidden');
+        if (hasScrollX || hasScrollY) {
+          var cr = c.getBoundingClientRect();
+          if ((hasScrollX && (r.left < cr.left - 1 || r.right > cr.right + 1)) ||
+              (hasScrollY && (r.top < cr.top - 1 || r.bottom > cr.bottom + 1))) {
+            return true;
+          }
+        }
+      }
+      c = getParentCrossShadow(c);
+    }
+    return false;
+  }
+
   function bringIntoView(element, options) {
     if (!element || typeof element.scrollIntoView !== 'function') return;
-    if (isInsideFixedContainer(element)) return;
-    options = options || { behavior: 'smooth', block: 'center' };
     try {
-      var r = element.getBoundingClientRect();
-      var vp = getViewportSize();
-      if (!(r.top >= 0 && r.left >= 0 && r.bottom <= vp.height && r.right <= vp.width)) {
+      var selfStyle = window.getComputedStyle(element);
+      if (selfStyle.position === 'fixed' && !hasScrollableAncestor(element)) return;
+    } catch (e) { /* ignore */ }
+
+    var defaultOptions = { behavior: 'smooth', block: 'nearest', inline: 'nearest' };
+    if (options && typeof options === 'object') {
+      var merged = {};
+      for (var k in defaultOptions) { merged[k] = defaultOptions[k]; }
+      for (var uk in options) { merged[uk] = options[uk]; }
+      options = merged;
+    } else {
+      options = defaultOptions;
+    }
+
+    try {
+      if (isElementClippedOrOffscreen(element)) {
         element.scrollIntoView(options);
       }
     } catch (err) { warn('SCROLL', 'Could not scroll: ' + err.message); }
@@ -1668,6 +1740,143 @@
   }
 
   // =========================================================================
+  // [NEW v1.6.0] MODULE: Strict Interaction Manager
+  // =========================================================================
+  // Locks down user interactions exclusively to the highlighted target element.
+  // When a step has strict: true (or advanceOn: { event: 'click', strict: true },
+  // or beacon: { strict: true }):
+  //   1. All clicks outside the target element and popover close/prev buttons
+  //      are intercepted in the capture phase, preventing unintended page actions.
+  //   2. Clicks outside trigger a visual shake feedback animation (tg-shake)
+  //      on the beacon and target element to cue the user.
+  //   3. Clicking the target element allows the event through to the host page
+  //      (so tabs or menus open normally) and advances the tour.
+  // =========================================================================
+
+  function createStrictInteractionManager(deps) {
+    var stateManager = deps.stateManager;
+    var popoverManager = deps.popoverManager;
+    var beaconManager = deps.beaconManager;
+    var configManager = deps.configManager;
+    var activeTarget = null;
+    var activeStep = null;
+    var advanceCallback = null;
+    var captureHandler = null;
+    var shakeTimeout = null;
+
+    function triggerShake(element) {
+      if (beaconManager && typeof beaconManager.getElement === 'function') {
+        var beaconEl = beaconManager.getElement();
+        if (beaconEl) {
+          beaconEl.classList.remove('tg-shake');
+          void beaconEl.offsetWidth;
+          beaconEl.classList.add('tg-shake');
+        }
+      }
+      if (element && element.classList) {
+        element.classList.remove('tg-shake');
+        void element.offsetWidth;
+        element.classList.add('tg-shake');
+      }
+
+      if (shakeTimeout) clearTimeout(shakeTimeout);
+      shakeTimeout = setTimeout(function () {
+        if (element && element.classList) element.classList.remove('tg-shake');
+        if (beaconManager && typeof beaconManager.getElement === 'function') {
+          var bel = beaconManager.getElement();
+          if (bel) bel.classList.remove('tg-shake');
+        }
+      }, 400);
+    }
+
+    function detach() {
+      if (captureHandler) {
+        document.removeEventListener('click', captureHandler, true);
+        captureHandler = null;
+      }
+      if (activeTarget && activeTarget.classList) {
+        activeTarget.classList.remove('tg-shake');
+      }
+      if (beaconManager && typeof beaconManager.getElement === 'function') {
+        var bel = beaconManager.getElement();
+        if (bel) bel.classList.remove('tg-shake');
+      }
+      if (shakeTimeout) {
+        clearTimeout(shakeTimeout);
+        shakeTimeout = null;
+      }
+      activeTarget = null;
+      activeStep = null;
+      advanceCallback = null;
+    }
+
+    function attach(step, targetElement, onAdvance) {
+      detach();
+      if (!step) return;
+
+      var isStrict = !!(step.strict || configManager.getConfig('strict') ||
+        (step.advanceOn && step.advanceOn.strict) ||
+        (step.beacon && step.beacon.strict));
+
+      if (!isStrict) return;
+
+      activeTarget = targetElement;
+      activeStep = step;
+      advanceCallback = onAdvance;
+
+      captureHandler = function (e) {
+        if (!stateManager.getState('isInitialized')) return;
+
+        // 1. Click is inside the target element -> ALLOW and ADVANCE
+        if (activeTarget && (activeTarget === e.target || activeTarget.contains(e.target))) {
+          detach();
+          setTimeout(function () {
+            if (advanceCallback) advanceCallback();
+          }, 0);
+          return;
+        }
+
+        // 2. Allow clicks on popover Close or Prev buttons
+        var popoverEl = popoverManager ? popoverManager.getElement() : null;
+        if (popoverEl && popoverEl.contains(e.target)) {
+          if (e.target.classList.contains('tg-popover-btn-close') ||
+              e.target.closest('.tg-popover-btn-close') ||
+              e.target.classList.contains('tg-popover-btn-prev') ||
+              e.target.closest('.tg-popover-btn-prev')) {
+            return;
+          }
+        }
+
+        // 3. Click is on the beacon element (waves or label) -> treat as clicking target
+        if (beaconManager && typeof beaconManager.getElement === 'function') {
+          var bEl = beaconManager.getElement();
+          if (bEl && (bEl === e.target || bEl.contains(e.target))) {
+            if (activeTarget && typeof activeTarget.click === 'function') {
+              detach();
+              activeTarget.click();
+              setTimeout(function () {
+                if (advanceCallback) advanceCallback();
+              }, 0);
+              return;
+            }
+          }
+        }
+
+        // 4. Click is OUTSIDE -> PREVENT and SHAKE
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+
+        triggerShake(activeTarget);
+      };
+
+      document.addEventListener('click', captureHandler, true);
+    }
+
+    return { attach: attach, detach: detach, triggerShake: triggerShake };
+  }
+
+  // =========================================================================
   // [NEW v1.5.0] MODULE: Hotspot Manager
   // =========================================================================
   // Manages persistent, non-blocking visual hints ("hotspots") that can be
@@ -1929,6 +2138,7 @@
     var textConfig = null;
     var clickHandler = null;
     var resizeHandler = null;
+    var strictHandler = null;
 
     var COLOR_PRESETS = {
       yellow: '#f59e0b',
@@ -1953,6 +2163,11 @@
         try { currentTarget.removeEventListener('click', clickHandler, true); }
         catch (e) { /* Best effort */ }
         clickHandler = null;
+      }
+      if (strictHandler) {
+        try { document.removeEventListener('click', strictHandler, true); }
+        catch (e) { /* Best effort */ }
+        strictHandler = null;
       }
       if (beaconEl && beaconEl.parentNode) {
         beaconEl.remove();
@@ -2134,6 +2349,38 @@
         };
         try { currentTarget.addEventListener('click', clickHandler, true); }
         catch (e) { /* Best effort */ }
+      }
+
+      // Strict mode: lock down clicks outside the target element
+      if (opts.strict === true) {
+        strictHandler = function (e) {
+          if (!currentTarget) return;
+          if (currentTarget === e.target || currentTarget.contains(e.target)) {
+            hide();
+            return;
+          }
+          if (beaconEl && (beaconEl === e.target || beaconEl.contains(e.target))) {
+            if (currentTarget && typeof currentTarget.click === 'function') {
+              hide();
+              currentTarget.click();
+              return;
+            }
+          }
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          if (beaconEl) {
+            beaconEl.classList.remove('tg-shake');
+            void beaconEl.offsetWidth;
+            beaconEl.classList.add('tg-shake');
+          }
+          if (currentTarget && currentTarget.classList) {
+            currentTarget.classList.remove('tg-shake');
+            void currentTarget.offsetWidth;
+            currentTarget.classList.add('tg-shake');
+          }
+        };
+        document.addEventListener('click', strictHandler, true);
       }
     }
 
@@ -2424,6 +2671,7 @@
       // [NEW v1.5.0] Re-apply theme on each render in case setConfig changed it.
       applyTheme(popoverEl, config.theme);
 
+      var isStrict = !!(step.strict || config.strict || (step.advanceOn && step.advanceOn.strict) || (step.beacon && step.beacon.strict));
       var buttonsList = popover.buttons || step.buttons || config.buttons;
       var showButtons = popover.showButtons || config.showButtons || ['next', 'previous', 'close'];
 
@@ -2462,11 +2710,12 @@
       if (buttonsList) {
         for (var bi = 0; bi < buttonsList.length; bi++) {
           if (buttonsList[bi] === 'close') continue; // Handled in header
+          if (isStrict && (buttonsList[bi] === 'next' || (typeof buttonsList[bi] === 'object' && buttonsList[bi].id === 'next'))) continue;
           footerItems.push(buttonsList[bi]);
         }
       } else {
         if (showButtons.indexOf('previous') !== -1) footerItems.push('previous');
-        if (showButtons.indexOf('next') !== -1) footerItems.push('next');
+        if (!isStrict && showButtons.indexOf('next') !== -1) footerItems.push('next');
       }
 
       if (footerItems.length > 0 || showProg) {
@@ -2891,6 +3140,12 @@
     var advanceOnManager = createAdvanceOnManager();
     var hotspotManager = createHotspotManager(zPopover);
     var beaconManager = createBeaconManager(zPopover);
+    var strictInteractionManager = createStrictInteractionManager({
+      stateManager: stateManager,
+      popoverManager: popoverManager,
+      beaconManager: beaconManager,
+      configManager: configManager,
+    });
     // autoRefreshManager is created later in init() because it needs
     // the handleRefresh function which is defined below.
     var autoRefreshManager = null;
@@ -2985,6 +3240,7 @@
 
       // [NEW v1.5.0] Clean up any previous advanceOn listener and waitFor poll.
       advanceOnManager.detach();
+      strictInteractionManager.detach();
       if (activeWaitForCleanup) {
         activeWaitForCleanup();
         activeWaitForCleanup = null;
@@ -3012,6 +3268,16 @@
         stateManager.setState('activeElement', he);
         popoverManager.hide();
         beaconManager.hide();
+
+        // [NEW v1.6.0] Attach strict interaction manager immediately when element is highlighted.
+        var isStrict = !!(step.strict || configManager.getConfig('strict') ||
+          (step.advanceOn && step.advanceOn.strict) ||
+          (step.beacon && step.beacon.strict));
+        if (isStrict && element) {
+          strictInteractionManager.attach(step, element, function () {
+            handleNext();
+          });
+        }
 
         // [NEW v1.5.0] Track step change for analytics.
         analyticsTracker.trackStep(idx, step);
@@ -3065,31 +3331,62 @@
         }, delay);
       }
 
-      // [NEW v1.5.0] Branch: async (waitFor) or sync element resolution.
-      if (step.waitFor) {
-        activeWaitForCleanup = waitForElement(step, idx, function (element) {
-          activeWaitForCleanup = null;
-          if (!stateManager.getState('isInitialized')) {
-            stateManager.setState('__transitionInProgress', false);
-            return;
-          }
-          if (!element && !step.popover) {
-            // Element not found and no popover to show: skip the step.
-            stateManager.setState('__transitionInProgress', false);
-            var nextIdx = idx + 1;
-            if (nextIdx < steps.length) {
-              highlightStep(nextIdx);
-            } else {
-              performDestroy(false);
+      // [NEW v1.6.0] Run beforeStep hook if defined (supports both sync and async / Promises).
+      function runBeforeStep(callback) {
+        var hook = step.beforeStep || configManager.getConfig('beforeStep');
+        if (typeof hook === 'function') {
+          try {
+            var result = hook(step, { config: configManager.getConfig(), state: stateManager.getState(), driver: api });
+            if (result && typeof result.then === 'function') {
+              result.then(function () {
+                if (!stateManager.getState('isInitialized')) return;
+                callback();
+              }, function (err) {
+                warn(ErrorCodes.HOOK_ERROR, 'Error in beforeStep hook: ' + (err && err.message));
+                if (!stateManager.getState('isInitialized')) return;
+                callback();
+              });
+              return;
             }
-            return;
+          } catch (err) {
+            warn(ErrorCodes.HOOK_ERROR, 'Error in beforeStep hook: ' + err.message);
           }
-          proceedWithElement(element);
-        });
-      } else {
-        var element = resolveElement(step.element);
-        proceedWithElement(element);
+        }
+        callback();
       }
+
+      runBeforeStep(function () {
+        if (!stateManager.getState('isInitialized')) {
+          stateManager.setState('__transitionInProgress', false);
+          return;
+        }
+
+        // [NEW v1.5.0] Branch: async (waitFor) or sync element resolution.
+        if (step.waitFor) {
+          activeWaitForCleanup = waitForElement(step, idx, function (element) {
+            activeWaitForCleanup = null;
+            if (!stateManager.getState('isInitialized')) {
+              stateManager.setState('__transitionInProgress', false);
+              return;
+            }
+            if (!element && !step.popover) {
+              // Element not found and no popover to show: skip the step.
+              stateManager.setState('__transitionInProgress', false);
+              var nextIdx = idx + 1;
+              if (nextIdx < steps.length) {
+                highlightStep(nextIdx);
+              } else {
+                performDestroy(false);
+              }
+              return;
+            }
+            proceedWithElement(element);
+          });
+        } else {
+          var element = resolveElement(step.element);
+          proceedWithElement(element);
+        }
+      });
     }
 
     // [MODIFIED v1.5.0] handleNext - added advanceOnManager.detach() and
@@ -3098,6 +3395,7 @@
       if (stateManager.getState('__transitionInProgress')) return;
       // [NEW v1.5.0] Clean up current step's listeners before transitioning.
       advanceOnManager.detach();
+      strictInteractionManager.detach();
       accessibilityManager.releaseFocusTrap();
       beaconManager.hide();
 
@@ -3114,6 +3412,7 @@
       if (stateManager.getState('__transitionInProgress')) return;
       // [NEW v1.5.0] Clean up current step's listeners before transitioning.
       advanceOnManager.detach();
+      strictInteractionManager.detach();
       accessibilityManager.releaseFocusTrap();
       beaconManager.hide();
 
@@ -3128,6 +3427,7 @@
       if (stateManager.getState('__transitionInProgress')) return;
       // [NEW v1.5.0] Clean up current step's listeners before closing.
       advanceOnManager.detach();
+      strictInteractionManager.detach();
       accessibilityManager.releaseFocusTrap();
       beaconManager.hide();
 
@@ -3166,6 +3466,7 @@
       // [NEW v1.5.0] Clean up new modules before destroying core modules.
       // Order matters: detach listeners first, then stop observers, then remove DOM.
       advanceOnManager.detach();
+      strictInteractionManager.detach();
       beaconManager.destroy();
       if (activeWaitForCleanup) {
         activeWaitForCleanup();

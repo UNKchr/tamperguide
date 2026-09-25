@@ -230,9 +230,11 @@ All options are passed to the `tamperGuide(options)` factory function. Every opt
 | `steps` | `Array` | `[]` | Array of step objects defining the tour. See the [Step Object](#step-object) section. |
 | `allowClose` | `boolean` | `true` | Allow the user to close the tour by pressing Escape or clicking the overlay. |
 | `allowKeyboardControl` | `boolean` | `true` | Enable keyboard navigation (arrow keys, Tab, Escape). |
-| `smoothScroll` | `boolean` | `true` | Smoothly scroll the page to bring off-screen elements into view before highlighting them. |
-| `scrollIntoViewOptions` | `object` | `{ behavior: 'smooth', block: 'center' }` | Options passed directly to `element.scrollIntoView()`. Only used when `smoothScroll` is `true`. |
+| `smoothScroll` | `boolean` | `true` | Smoothly scroll the page or parent containers to bring off-screen elements into view before highlighting them. Works in nested horizontal/vertical scroll containers and `position: fixed` modals. |
+| `scrollIntoViewOptions` | `object` | `{ behavior: 'smooth', block: 'nearest', inline: 'nearest' }` | Options passed directly to `element.scrollIntoView()`. Defaults to `nearest` for both vertical and horizontal inline scrolling. |
 | `disableActiveInteraction` | `boolean` | `false` | When `true`, pointer events on the highlighted element are disabled, preventing the user from clicking it during the tour. |
+| `strict` | `boolean` | `false` | When `true`, enforces strict user interaction: all clicks outside the target element are intercepted and blocked, triggering a visual shake animation (`tg-shake`). The popover's "Next" button is automatically hidden. |
+| `beforeStep` | `function` | `undefined` | Global lifecycle hook executed before resolving and highlighting the step element. Can return a Promise for asynchronous operations. |
 | `beacon` | `boolean \| object` | `undefined` | Shows a non-blocking animated click indicator (adaptive contour ripple or radar circle) on highlighted elements. See the [Click Indicator / Beacon](#click-indicator--beacon) section. |
 
 ### Persistence
@@ -319,6 +321,26 @@ Each entry in the `steps` array is a plain object with the following shape:
     timeout: 5000,       // max wait time in ms (default: 5000)
     pollInterval: 200,   // check frequency in ms (default: 200, min: 16)
   },
+
+  // ------------------------------------------------------------------
+  // beforeStep (optional) — NEW in v1.6.0
+  // ------------------------------------------------------------------
+  // Hook executed before resolving and highlighting this step's element.
+  // Supports returning a Promise for asynchronous operations (e.g. switching
+  // tabs, navigating carousels, or opening dialogs).
+  beforeStep: async (step, context) => {
+    // Custom script action: switch tabs or click next arrow before highlighting
+    document.querySelector('.tab-next-arrow')?.click();
+  },
+
+  // ------------------------------------------------------------------
+  // strict (optional) — NEW in v1.6.0
+  // ------------------------------------------------------------------
+  // When true, restricts interaction exclusively to this step's target
+  // element. All clicks outside the target are intercepted and blocked,
+  // triggering a visual shake animation (`tg-shake`). The popover's
+  // "Next" button is automatically hidden so the user cannot skip.
+  strict: true,
 
   // ------------------------------------------------------------------
   // advanceOn (optional) — NEW in v1.5.0
@@ -637,7 +659,92 @@ When `advanceOn` is configured:
 - The user can still click the Next button or use keyboard navigation to advance manually.
 - The listener is always cleaned up when the step changes or the tour is destroyed, preventing memory leaks.
 
-If the target element specified by `advanceOn.selector` cannot be found in the DOM, a warning is logged and the step behaves normally (the user can still click Next to advance).
+---
+
+## Strict Interaction Mode & Smart Container Scrolling
+
+Real-world userscript dashboards and floating modals (such as Instagram analyzers, extensions, and SPAs) often present two challenges:
+1. **Nested scroll containers inside `position: fixed` modals:** Elements like horizontal tab strips (`overflow-x: auto / scroll`) or long setting lists are hidden off-screen inside a fixed dialog.
+2. **Dependent / Chained steps:** A step requires the user to click a tab or button to reveal a secondary panel/menu before the next step can locate its target. If the user clicks "Next" or clicks outside without clicking the required tab, the next step fails to find its element and breaks.
+
+TamperGuide solves both challenges natively.
+
+### 1. Smart Container Scrolling
+
+TamperGuide automatically detects whether a highlighted element is clipped or off-screen—not only relative to the browser window, but also relative to **any scrollable ancestor** (`overflow-x` / `overflow-y` set to `auto`, `scroll`, or `hidden`), even when nested inside `position: fixed` modals.
+
+- **Horizontal & Vertical Auto-Scroll:** Uses `{ behavior: 'smooth', block: 'nearest', inline: 'nearest' }` by default, smoothly sliding horizontal tab bars into view without causing jarring vertical page jumps.
+- **`beforeStep` Lifecycle Hook:** If your userscript's tab bar does not use native CSS scrolling, but instead uses custom JavaScript pagination (e.g. arrow buttons or an internal tab-switching API), you can provide `beforeStep`:
+
+```js
+{
+  element: '#tab-backup',
+  beforeStep: async (step, context) => {
+    // Custom script action: switch tabs or click next arrow before highlighting
+    document.querySelector('.tabs-arrow-right')?.click();
+    // Or call your userscript's internal function:
+    // await myApp.switchTab('backup');
+  },
+  popover: {
+    title: 'Backup Tab',
+    description: 'This tab was revealed programmatically before highlighting.',
+  },
+}
+```
+
+### 2. Strict Interaction Mode (`strict: true`)
+
+When a tour step or beacon has `strict: true`:
+- **Automatic "Next" button omission:** The popover automatically hides the "Next" button so users cannot bypass the mandatory action.
+- **Outside click barrier:** All clicks outside the target element and popover close button are intercepted and blocked in the capture phase (`e.preventDefault()`, `e.stopPropagation()`).
+- **Visual shake feedback (`tg-shake`):** If the user clicks anywhere outside the allowed target, the beacon and target element shake horizontally with an animated visual pulse to cue the user: *"You must click here to continue!"*.
+- **Seamless advancement:** When the user clicks the target element, its native event executes (opening your tab/menu in the userscript), and TamperGuide advances to the next step.
+
+```js
+const guide = tamperGuide({
+  steps: [
+    {
+      id: 'open-backup-tab',
+      element: '#tab-backup',
+      // Strict interaction: user must click this tab to proceed!
+      strict: true,
+      beacon: {
+        text: 'Haz clic aquí para abrir Backup',
+        color: 'yellow',
+        shape: 'adaptive',
+      },
+      popover: {
+        title: 'Copia de Seguridad',
+        description: 'Haz clic en esta pestaña para desplegar las opciones de exportación.',
+        showButtons: ['close'], // Next is omitted automatically
+      },
+    },
+    {
+      id: 'export-backup-btn',
+      element: '#export-backup-btn',
+      // Automatically waits for the backup panel to render after the tab is clicked!
+      waitFor: { timeout: 3000 },
+      popover: {
+        title: 'Exportar Datos',
+        description: 'Aquí puedes descargar todos tus datos en JSON.',
+      },
+    },
+  ],
+});
+
+guide.drive();
+```
+
+### Standalone Strict Beacon
+
+You can also use strict mode in standalone beacons outside of a tour:
+
+```js
+guide.showBeacon('#confirm-action-btn', {
+  text: 'Acción requerida',
+  strict: true, // Blocks clicks outside #confirm-action-btn and shakes on outside clicks
+});
+```
 
 ---
 

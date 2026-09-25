@@ -154,9 +154,28 @@
           advanceOn: { event: 'click' },
         },
         {
+          element: '#tg-demo-save',
+          popover: {
+            title: 'Strict Interaction Mode',
+            description: 'You MUST click this button to continue! Clicking anywhere else is blocked and triggers a shake feedback animation.',
+            side: 'top',
+          },
+          // Strict interaction mode: locks down outside clicks and shakes on error
+          strict: true,
+          beacon: {
+            shape: 'adaptive',
+            color: 'red',
+            text: {
+              content: 'Action strictly required',
+              theme: 'dark',
+              icon: '🔒',
+            },
+          },
+        },
+        {
           popover: {
             title: 'Tour Finished!',
-            description: 'You experienced all beacon modes: wave-only, dark pill, accent pill, and light theme with icons.',
+            description: 'You experienced all beacon modes: wave-only, dark pill, accent pill, light theme with icons, and strict interaction locking.',
           },
         },
       ],
@@ -228,6 +247,24 @@
     console.log('[Beacon Demo] Standalone wave-only beacon shown on #tg-demo-pill.');
   }
 
+  function showStrictBeacon() {
+    injectDemoBar();
+    var g = ensureStandaloneGuide();
+    // Strict beacon: blocks clicks outside and shakes on error
+    g.showBeacon('#tg-demo-save', {
+      shape: 'adaptive',
+      color: 'red',
+      strict: true,
+      text: {
+        content: 'Click here only (strict mode)',
+        theme: 'dark',
+        icon: '🔒',
+        position: 'top',
+      },
+    });
+    console.log('[Beacon Demo] Standalone strict beacon shown on #tg-demo-save.');
+  }
+
   function hideBeacon() {
     if (standaloneGuide) {
       standaloneGuide.hideBeacon();
@@ -243,6 +280,7 @@
     GM_registerMenuCommand('TamperGuide: Show Dark Pill Beacon', showPillBeacon);
     GM_registerMenuCommand('TamperGuide: Show Light Pill Beacon', showLightPillBeacon);
     GM_registerMenuCommand('TamperGuide: Show Wave-Only Beacon', showWaveOnlyBeacon);
+    GM_registerMenuCommand('TamperGuide: Show Strict Locked Beacon', showStrictBeacon);
     GM_registerMenuCommand('TamperGuide: Hide Active Beacon', hideBeacon);
   }
 
